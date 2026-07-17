@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke:
+    name: Smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      - name: Install
+        run: npm install --no-audit --no-fund --omit=optional
+      - name: Boot server
+        run: |
+          PORT=10000 nohup node src/server.js > server.log 2>&1 &
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -s -o /dev/null -w "%{http_code}" http://localhost:10000/health | grep -q 200; then
+              echo "ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          cat server.log
+      - name: Smoke
+        run: BASE=http://localhost:10000 node scripts/smoke_test.js
+
+  deploy:
+    name: Trigger Render deploy
+    needs: smoke
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Hit Render deploy hook
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "::warning::RENDER_DEPLOY_HOOK_URL secret not set — skipping deploy trigger."
+            exit 0
+          fi
+          curl -sS -X POST "$RENDER_DEPLOY_HOOK_URL"
+          echo "deploy hook hit"

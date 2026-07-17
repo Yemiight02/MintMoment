@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: mintmoment
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    autoDeploy: true
+    buildCommand: npm install --omit=optional --no-audit --no-fund
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: X_LAYER_RPC
+        value: https://rpc.xlayer.tech
+      - key: X_LAYER_CHAIN_ID
+        value: "196"
+      - key: X_LAYER_EXPLORER
+        value: https://www.oklink.com/xlayer
+      - key: RECEIVE_ADDRESS
+        sync: false
+      - key: PAYMENT_ASSET
+        value: USDT0
+      - key: PAYMENT_ASSET_ADDRESS
+        value: 0x779ded0c9e1022225f8a06d3a3c4b3f1e6d5b4d3
+      - key: PAYMENT_ASSET_DECIMALS
+        value: "6"
+      - key: AGENT_NAME
+        value: MintMoment
+      - key: AGENT_TAGLINE
+        value: Your life, minted onchain.
+      - key: AGENT_CATEGORY
+        value: Lifestyle
+      - key: AGENT_EMAIL
+        value: fijinfolu@gmail.com
+      - key: PUBLIC_URL
+        sync: false

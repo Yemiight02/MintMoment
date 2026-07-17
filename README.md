@@ -205,6 +205,23 @@ traction.
 - ✅ Open source, MIT licensed
 - ✅ Zero-cost infra (Render free tier)
 
+## Testing locally
+
+```bash
+git clone https://github.com/Yemiight02/MintMoment
+cd MintMoment
+npm install
+npm run dev          # http://localhost:10000
+npm run smoke        # 30 checks: health, manifest, all 4 services, x402 payment gate
+```
+
+The smoke test exercises every endpoint, the 402 payment gate, the x402
+manifest schema, and the landing page. Run it against any live URL:
+
+```bash
+BASE=https://mintmoment.onrender.com node scripts/smoke_test.js
+```
+
 ## Tech stack
 
 - **Runtime:** Node 18+ (ESM)

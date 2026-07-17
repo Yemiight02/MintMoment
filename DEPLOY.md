@@ -65,17 +65,12 @@ BASE=https://mintmoment.onrender.com node scripts/smoke_test.js
 
 All 30 checks should pass.
 
-## Wiring up auto-deploy via GitHub Actions (optional)
+## Triggering redeploys
 
-The repo includes `.github/workflows/ci.yml` which runs the smoke test on every
-push and, on success, hits a Render deploy hook. To enable:
-
-1. In Render dashboard → your service → **Settings** → copy the **Deploy Hook URL**.
-2. In GitHub → `Yemiight02/MintMoment` → **Settings** → **Secrets and variables**
-   → **Actions** → **New repository secret**:
-   - Name: `RENDER_DEPLOY_HOOK_URL`
-   - Value: (paste the URL from step 1)
-3. Future pushes to `main` will run tests, then trigger Render to redeploy.
+With `autoDeploy: true` set in `render.yaml`, any push to `main` will
+auto-rebuild on Render. **Heads up from past projects:** free-tier auto-deploy
+can be flaky when the service sleeps. If a push doesn't take effect within
+2-3 minutes, click **Manual Deploy** in the Render dashboard.
 
 ## Notes for hackathon submission
 

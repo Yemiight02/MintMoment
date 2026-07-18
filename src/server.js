@@ -27,6 +27,9 @@
 import express from 'express';
 import cors from 'cors';
 import crypto from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { join as pathJoin, extname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { config as loadEnv } from 'dotenv';
 
 loadEnv();
@@ -474,6 +477,7 @@ app.get('/.well-known/x402', (_req, res) => {
     description: AGENT_DESCRIPTION,
     image: `${PUBLIC_URL}/assets/mintmoment-icon.png`,
     homepage: PUBLIC_URL,
+    demoVideo: `${PUBLIC_URL}/assets/demo-90s.mp4`,
     agentCategory: AGENT_CATEGORY,
     payTo: RECEIVE_ADDRESS,
     network: `eip155:${X_LAYER_CHAIN_ID}`,
@@ -518,6 +522,30 @@ app.get('/api/recent', (req, res) => {
 app.get('/', (_req, res) => {
   res.set('Content-Type', 'text/html; charset=utf-8');
   res.send(renderLandingPage(SERVICES, recentMints));
+});
+
+// ── Static assets (video demo, etc.) ─────────────────────────────────────
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = pathJoin(__filename, '..');
+const ASSETS_DIR = pathJoin(__dirname, '..', 'assets');
+
+const MIME = {
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.gif': 'image/gif',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.svg': 'image/svg+xml',
+};
+
+app.get('/assets/:filename', (req, res) => {
+  const safe = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, '');
+  const filePath = pathJoin(ASSETS_DIR, safe);
+  if (!existsSync(filePath)) return res.status(404).end();
+  const ext = extname(safe).toLowerCase();
+  res.set('Content-Type', MIME[ext] || 'application/octet-stream');
+  res.set('Cache-Control', 'public, max-age=300');
+  return res.sendFile(filePath);
 });
 
 // ── Keepsake lookup ─────────────────────────────────────────────────────────
@@ -1087,6 +1115,18 @@ function renderLandingPage(services, recent) {
     </section>
 
     <!-- ─── RECENT MINTS ────────────────────────────────────────────── -->
+    <!-- ─── 90s DEMO VIDEO ────────────────────────────────────────── -->
+    <section class="video-section" id="video">
+      <h2 class="section-title">90-second demo</h2>
+      <p class="section-sub">The full flow in under 90 seconds. No voice, no cuts — just the live x402 walkthrough.</p>
+      <div class="video-wrap" style="text-align:center; margin-top: 24px;">
+        <video controls preload="metadata" width="100%" style="max-width: 960px; border-radius: 12px; background: #000; box-shadow: 0 16px 40px rgba(60,40,20,0.15);">
+          <source src="${PUBLIC_URL}/assets/demo-90s.mp4" type="video/mp4" />
+          Your browser does not support the video tag. <a href="${PUBLIC_URL}/assets/demo-90s.mp4">Download the demo (90s MP4)</a>.
+        </video>
+      </div>
+    </section>
+
     <section class="recent" id="recent">
       <h2 class="section-title">Recent keepsakes</h2>
       <p class="section-sub">Live transaction feed from the in-memory mint log. Every keepsake below has a real tx hash on X Layer.</p>

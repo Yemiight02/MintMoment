@@ -90,6 +90,8 @@ Hermes, OpenClaw) can auto-handle.
 |---|---|---|---|
 | `quick_moment` | Quick Moment | **Free** | Text → preview keepsake, no mint, no wallet |
 | `mint_keepsake` | Mint Keepsake | **$0.05 USDT0** | Generate + onchain mint, single moment |
+| `gift_keepsake` | Gift Keepsake | **$0.10 USDT0** | Mint + attribute to a recipient (gifting) |
+| `anniversary_mint` | Anniversary Mint | **$0.15 USDT0** | Date-stamped milestone keepsake |
 | `monthly_timeline` | Monthly Timeline | **$0.20 USDT0** | Bundle of up to 5 mints + curated narrative |
 | `premium_story` | Premium Story | **$0.50 USDT0** | Multi-scene cinematic arc, 3-5 mints |
 
@@ -162,6 +164,29 @@ Returns a preview keepsake. No wallet, no mint.
 Without `X-PAYMENT`, returns 402 + `PaymentRequired`. With valid payment,
 mints onchain and returns `{ keepsake: { id, title, palette, caption, txHash, explorerUrl, ... } }`.
 
+### `POST /api/gift_keepsake`  *($0.10 USDT0)*
+```json
+{
+  "moment": "For M, the morning we met.",
+  "mood": "tender",
+  "recipient": "0xabc...123",
+  "toName": "M",
+  "note": "I keep this one for us."
+}
+```
+Mints a keepsake on behalf of someone else. The recipient is the wallet
+attribution; `toName` and `note` ride along in the onchain record.
+
+### `POST /api/anniversary_mint`  *($0.15 USDT0)*
+```json
+{
+  "moment": "The day we moved into the new apartment.",
+  "anniversaryDate": "2023-07-17",
+  "mood": "nostalgic"
+}
+```
+Returns a keepsake with `anniversaryDate` + computed `yearsSince` fields.
+
 ### `POST /api/monthly_timeline`  *($0.20 USDT0)*
 ```json
 {
@@ -222,6 +247,8 @@ manifest schema, and the landing page. Run it against any live URL:
 BASE=https://mintmoment.onrender.com node scripts/smoke_test.js
 ```
 
+65 checks across all 6 services + landing page.
+
 ## Tech stack
 
 - **Runtime:** Node 18+ (ESM)
@@ -257,6 +284,7 @@ MintMoment/
 - [ ] Onchain tx hash verification against X Layer RPC
 - [ ] Bundle export (JSON-LD timeline) for portability
 - [ ] Receipt NFTs (each mint mints a 1/1 keepsake ERC-721)
+- [ ] Image upload endpoint (currently text-only)
 
 ## License
 

@@ -9,7 +9,35 @@ and the X post.
 - **x402 manifest:** https://mintmoment.onrender.com/.well-known/x402
 - **Health:** https://mintmoment.onrender.com/health
 - **GitHub repo:** https://github.com/Yemiight02/MintMoment
-- **Receive address (X Layer):** `0x8bfc0f414be2f70c5930f7713be1db188eb0c3bd`
+- **OKX.AI marketplace:** https://www.okx.ai/agents (search "mintmoment" or browse Lifestyle)
+- **OKX.AI agent page (direct):** https://www.okx.ai/agent/6607 *(once approved)*
+- **Receive address (X Layer):** `0x1d238d991786b57d0cf61b854b476489320d86de`
+- **Network:** X Layer (eip155:196)
+- **Asset:** USDT0 (6 decimals, contract `0x779ded0c9e1022225f8a06d3a3c4b3f1e6d5b4d3`)
+
+## Marketplace Listing
+
+| Field | Value |
+|---|---|
+| **Agent ID** | `6607` |
+| **Name** | `MintMoment` |
+| **Role** | `ASP` |
+| **Chain** | X Layer (chain 196) |
+| **Status** | Listing under review (approvalStatus=2) |
+| **Tx hash (create)** | `0xc5878a3572b540e772fe37ee45659cd3ffc0b94801107eb21b065d9e83e23dfc` |
+| **Avatar CDN** | https://static.okx.com/cdn/web3/wallet/marketplace/headimages/agent/avatar/0fbc54ed-089d-4346-b9ce-773f5a6b85ca.png |
+| **Review notification** | `fijinfolu@gmail.com` (24h–2 business days) |
+
+## Services (6 total)
+
+| # | Service | Type | Fee | Endpoint |
+|---|---|---|---|---|
+| 1 | Quick Moment | A2MCP | 0 USDT | https://mintmoment.onrender.com/api/quick_moment |
+| 2 | Mint Keepsake | A2MCP | 0.05 USDT | https://mintmoment.onrender.com/api/mint_keepsake |
+| 3 | Gift Keepsake | A2MCP | 0.10 USDT | https://mintmoment.onrender.com/api/gift_keepsake |
+| 4 | Anniversary Mint | A2MCP | 0.15 USDT | https://mintmoment.onrender.com/api/anniversary_mint |
+| 5 | Monthly Timeline | A2MCP | 0.20 USDT | https://mintmoment.onrender.com/api/monthly_timeline |
+| 6 | Premium Story | A2MCP | 0.50 USDT | https://mintmoment.onrender.com/api/premium_story |
 
 ## Google Form Answers
 
@@ -18,12 +46,12 @@ When you open the form (https://forms.gle/mddEUagmDbyV37ws8), use these:
 | Field | Value |
 |---|---|
 | ASP Name | `MintMoment` |
-| Agent ID (after listing) | *(filled by OKX.AI listing system — leave blank initially, fill after listing)* |
+| Agent ID | `6607` |
 | ASP Type | `A2MCP` |
 | Live URL | `https://mintmoment.onrender.com` |
 | Source / Repo URL | `https://github.com/Yemiight02/MintMoment` |
 | x402 manifest | `https://mintmoment.onrender.com/.well-known/x402` |
-| Wallet address (receive) | `0x8bfc0f414be2f70c5930f7713be1db188eb0c3bd` |
+| Wallet address (receive) | `0x1d238d991786b57d0cf61b854b476489320d86de` |
 | Network | `X Layer (eip155:196)` |
 | Asset | `USDT0 (6 decimals)` |
 | Description | *see below* |
@@ -51,6 +79,31 @@ When you open the form (https://forms.gle/mddEUagmDbyV37ws8), use these:
 
 ## X Post Template (≤90s demo + #OKXAI)
 
+### Option 1 — Single tweet (most concise, easy to do)
+```
+🧵 Meet MintMoment — a Lifestyle Companion ASP on @okx AI marketplace.
+
+Type a moment. Mint it onchain on X Layer. Pay in USDT0 via x402 v2. 
+Get back a permanent transaction hash on @oklink explorer.
+
+6 services:
+🆓 Quick Moment — text → preview, no mint, no wallet
+🪙 Mint Keepsake — $0.05 — single onchain moment
+🎁 Gift Keepsake — $0.10 — mint to a recipient
+📅 Anniversary Mint — $0.15 — date-stamped milestones
+📅 Monthly Timeline — $0.20 — 5 mints + curated narrative
+🎬 Premium Story — $0.50 — multi-scene cinematic
+
+Live: https://mintmoment.onrender.com
+x402 manifest: https://mintmoment.onrender.com/.well-known/x402
+Source: https://github.com/Yemiight02/MintMoment
+
+Built for the @OKX AI Genesis Hackathon. Lifestyle Companion category.
+
+#OKXAI
+```
+
+### Option 2 — 5-tweet thread (more demo + context)
 ```
 🧵 1/5
 
@@ -125,25 +178,43 @@ Built for the @OKX AI Genesis Hackathon. Lifestyle Companion category.
 5. **[65-80s]** Scroll down to "Recent keepsakes" — show the social proof feed with real txHash links to OKLink
 6. **[80-90s]** Final shot of the services grid with all 6 prices visible
 
-## Marketplace Listing Steps (for OKX.AI dashboard at https://okx.ai/tutorial/asp)
+## How to post on X (3 options)
 
-| Field | Value |
-|---|---|
-| Agent Name | MintMoment |
-| Category | Lifestyle Companion |
-| Tagline | Your life, minted onchain. |
-| Description | (see long description above) |
-| Endpoint URL | https://mintmoment.onrender.com |
-| x402 manifest | https://mintmoment.onrender.com/.well-known/x402 |
-| Wallet address | 0x8bfc0f414be2f70c5930f7713be1db188eb0c3bd |
-| Network | X Layer (eip155:196) |
-| Settlement asset | USDT0 (0x779ded0c9e1022225f8a06d3a3c4b3f1e6d5b4d3) |
-| Services | quick_moment, mint_keepsake, gift_keepsake, anniversary_mint, monthly_timeline, premium_story |
-| Pricing | free / $0.05 / $0.10 / $0.15 / $0.20 / $0.50 USDT0 |
-| Logo/icon | Use the data: URI inline SVG (warm brown gradient + "M" letterform). Or replace with a custom PNG if you have one. |
+### Option A — Manual (easiest, 30 seconds)
+1. Open https://x.com in your browser
+2. Sign in
+3. Click "Post" (the compose button)
+4. Copy-paste one of the X post templates above
+5. Add a screenshot or screen recording of the live demo if you want
+6. Click "Post"
+7. Copy the resulting URL (e.g. https://x.com/YourHandle/status/1234567890) — that's the "Demo X post URL" for the form
+
+### Option B — With screen recording (recommended for judges)
+1. Open https://mintmoment.onrender.com in browser, set to mobile or 1280x720
+2. Use a screen recorder (OBS, Loom, your phone) to capture the 90-second flow
+3. Upload the video to X (as a video tweet, not just text)
+4. Include the X post template text as the caption
+
+### Option C — Programmatic (requires X API keys)
+If you have X API access, I can post automatically. But manual is faster.
+
+## Post-submission
+
+Once you submit the Google form with the X post URL, the OKX.AI review team
+will:
+1. Confirm the marketplace listing (24h-2 business days)
+2. Confirm the X post (a few hours)
+3. Score the submission against the judging criteria:
+   - Product quality
+   - Use case strength
+   - Marketplace fit
+   - Innovation
+   - Reliability
+   - Long-term potential
+   - Social traction
 
 ## Contact
 
 - Email: fijinfolu@gmail.com
 - GitHub: @Yemiight02
-- X handle: *(fill in if you have one)*
+- X handle: *(fill in)*

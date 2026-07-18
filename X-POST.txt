@@ -1,10 +1,10 @@
 Your life, minted onchain. 🟢
 
-MintMoment — Lifestyle ASP on @okx AI.
-Type a moment. Mint on X Layer. Pay USDT0 via x402 v2.
+MintMoment is a Lifestyle ASP on @okx AI marketplace.
+Type any moment. Mint on X Layer. Pay USDT0 via x402 v2.
 
-Free preview → $0.05 single → $0.10 gift → $0.50 story.
+6 services: free, $0.05, $0.10, $0.15, $0.20, $0.50 USDT0.
 
-▶️ 90s demo: https://mintmoment.onrender.com/assets/demo-90s.mp4
+Built for the @OKX AI Genesis Hackathon. Lifestyle Companion category.
 
 #OKXAI

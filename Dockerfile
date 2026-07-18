@@ -12,6 +12,7 @@ RUN npm ci --omit=dev --omit=optional --no-audit --no-fund
 # Copy the rest
 COPY src ./src
 COPY scripts ./scripts
+COPY assets ./assets
 
 ENV NODE_ENV=production
 ENV PORT=10000

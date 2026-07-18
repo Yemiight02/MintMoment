@@ -437,13 +437,74 @@ function seedDemoMints() {
 seedDemoMints();
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Express app
+// Process-level health & uptime tracking
 // ─────────────────────────────────────────────────────────────────────────────
+
+const PROCESS_START_TS = Date.now();
+const CHECK_HISTORY = []; // ring buffer of last 100 health checks
+const CHECK_HISTORY_CAP = 100;
+let lastCheckTs = 0;
+let lastCheckOk = true;
+let totalChecks = 0;
+let failedChecks = 0;
+
+function recordCheck(ok, detail = '') {
+  totalChecks++;
+  if (!ok) failedChecks++;
+  lastCheckTs = Date.now();
+  lastCheckOk = ok;
+  CHECK_HISTORY.push({ ts: lastCheckTs, ok, detail });
+  if (CHECK_HISTORY.length > CHECK_HISTORY_CAP) CHECK_HISTORY.shift();
+}
+
+// Process-level error guards — never let one bad request kill the server.
+process.on('uncaughtException', (err) => {
+  console.error(`[${new Date().toISOString()}] UNCAUGHT EXCEPTION:`, err);
+  recordCheck(false, `uncaughtException: ${err.message}`);
+  // Do NOT exit — keep serving.
+});
+process.on('unhandledRejection', (reason) => {
+  console.error(`[${new Date().toISOString()}] UNHANDLED REJECTION:`, reason);
+  recordCheck(false, `unhandledRejection: ${reason}`);
+  // Do NOT exit — keep serving.
+});
+
+// Graceful shutdown on SIGTERM (Render sends this on restart/deploy)
+let shuttingDown = false;
+function gracefulShutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[${new Date().toISOString()}] ${signal} received, draining in-flight requests...`);
+  setTimeout(() => process.exit(0), 8000).unref();
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Self-check loop — every 30s, watch memory + liveness.
+setInterval(() => {
+  try {
+    const mem = process.memoryUsage();
+    if (mem.heapUsed > 400 * 1024 * 1024) {
+      console.warn(`[health] heapUsed=${Math.round(mem.heapUsed/1024/1024)}MB — high memory`);
+    }
+    recordCheck(true, `mem=${Math.round(mem.heapUsed/1024/1024)}MB`);
+  } catch (err) {
+    recordCheck(false, `selfcheck error: ${err.message}`);
+  }
+}, 30_000).unref();
 
 const app = express();
 app.disable('x-powered-by');
 app.use(cors());
 app.use(express.json({ limit: '64kb' }));
+
+// Body-parser error guard — malformed JSON returns 400, not a crash.
+app.use((err, _req, res, next) => {
+  if (err && err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'invalid_json', message: err.message });
+  }
+  next(err);
+});
 
 // Lightweight request log
 app.use((req, _res, next) => {
@@ -454,7 +515,8 @@ app.use((req, _res, next) => {
 
 // ── Health ──────────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
-  res.json({
+  recordCheck(true, 'health check');
+  res.status(200).json({
     status: 'ok',
     agent: AGENT_NAME,
     category: AGENT_CATEGORY,
@@ -464,6 +526,38 @@ app.get('/health', (_req, res) => {
     services: SERVICES.length,
     recentMints: recentMints.length,
     timestamp: new Date().toISOString(),
+  });
+});
+
+// ── Version ─────────────────────────────────────────────────────────────────
+app.get('/version', (_req, res) => {
+  res.json({
+    agent: AGENT_NAME,
+    version: '1.0.0',
+    node: process.version,
+    runtime: 'docker',
+    deployedAt: new Date(PROCESS_START_TS).toISOString(),
+    uptimeSec: Math.round(process.uptime()),
+  });
+});
+
+// ── Status (detailed health for monitoring) ───────────────────────────────
+app.get('/status', (_req, res) => {
+  const successRate = totalChecks === 0 ? 100 : ((totalChecks - failedChecks) / totalChecks * 100);
+  res.json({
+    status: lastCheckOk ? 'healthy' : 'degraded',
+    agent: AGENT_NAME,
+    uptimeSec: Math.round(process.uptime()),
+    startedAt: new Date(PROCESS_START_TS).toISOString(),
+    lastCheckAt: new Date(lastCheckTs).toISOString(),
+    checks: { total: totalChecks, failed: failedChecks, successRate: Number(successRate.toFixed(2)) },
+    services: SERVICES.length,
+    recentMints: recentMints.length,
+    memoryMB: {
+      heapUsed: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+      rss: Math.round(process.memoryUsage().rss / 1024 / 1024),
+    },
+    recentChecks: CHECK_HISTORY.slice(-20),
   });
 });
 
@@ -768,6 +862,17 @@ app.use((_req, res) => {
   res.status(404).json({
     error: 'not_found',
     hint: 'See GET /.well-known/x402 for the service manifest.',
+  });
+});
+
+// Final error handler — never let a route crash the process.
+app.use((err, req, res, _next) => {
+  console.error(`[${new Date().toISOString()}] ERROR ${req.method} ${req.path}:`, err && err.message);
+  recordCheck(false, `route error: ${err && err.message}`);
+  if (res.headersSent) return;
+  res.status(500).json({
+    error: 'internal_error',
+    message: 'The agent encountered an error. Please retry.',
   });
 });
 
@@ -1326,6 +1431,16 @@ function escapeHtml(s) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Boot
 // ─────────────────────────────────────────────────────────────────────────────
+// Self-keepalive — hit our own /health every 5 minutes so Render's
+// free-tier cold-start doesn't kick in (the instance sleeps after 15 min
+// of no traffic, which adds ~30s to the first request after a quiet period).
+const SELF_URL = `http://127.0.0.1:${PORT}/health`;
+setInterval(() => {
+  fetch(SELF_URL)
+    .then((r) => { if (!r.ok) console.warn(`[keepalive] status=${r.status}`); })
+    .catch((e) => console.warn(`[keepalive] failed: ${e.message}`));
+}, 5 * 60 * 1000).unref();
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`┌──────────────────────────────────────────┐`);
   console.log(`│  ${AGENT_NAME} — ${AGENT_TAGLINE}`);

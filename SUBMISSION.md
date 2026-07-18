@@ -7,6 +7,7 @@ and the X post.
 
 - **Landing page (judge-facing):** https://mintmoment.onrender.com
 - **x402 manifest:** https://mintmoment.onrender.com/.well-known/x402
+- **90s demo video:** https://mintmoment.onrender.com/assets/demo-90s.mp4
 - **Health:** https://mintmoment.onrender.com/health
 - **GitHub repo:** https://github.com/Yemiight02/MintMoment
 - **OKX.AI marketplace:** https://www.okx.ai/agents (search "mintmoment" or browse Lifestyle)
@@ -77,9 +78,55 @@ When you open the form (https://forms.gle/mddEUagmDbyV37ws8), use these:
 > every paid endpoint returns HTTP 402 with a PaymentRequired body that
 > Claude Code, Codex, Hermes, or OpenClaw can auto-handle.
 
-## X Post Template (≤90s demo + #OKXAI)
+### Option 3 — Single tweet (most concise, easy to do)
 
-### Option 1 — Single tweet (most concise, easy to do)
+The X post template that pairs with the video:
+
+```
+Your life, minted onchain. 🟢
+
+MintMoment is a Lifestyle Companion ASP on @okx AI marketplace.
+Type a moment. Mint it onchain on X Layer. Pay in USDT0 via x402 v2.
+Get back a permanent transaction hash on @oklink explorer.
+
+6 services:
+🆓 Quick Moment — text → preview, no mint, no wallet
+🪙 Mint Keepsake — $0.05 — single onchain moment
+🎁 Gift Keepsake — $0.10 — mint to a recipient
+📅 Anniversary Mint — $0.15 — date-stamped milestones
+📅 Monthly Timeline — $0.20 — 5 mints + curated narrative
+🎬 Premium Story — $0.50 — multi-scene cinematic
+
+▶️ 90s demo: https://mintmoment.onrender.com/assets/demo-90s.mp4
+🌐 Live: https://mintmoment.onrender.com
+📜 x402 manifest: https://mintmoment.onrender.com/.well-known/x402
+💻 Open source: https://github.com/Yemiight02/MintMoment
+
+Built for the @OKX AI Genesis Hackathon. Lifestyle Companion category.
+
+#OKXAI
+```
+
+### Option 2 — 5-tweet thread with video in the first tweet
+
+Replace the first tweet of the 5-tweet thread with:
+
+```
+Your life, minted onchain. 🟢
+
+MintMoment is a Lifestyle Companion ASP on @okx AI marketplace.
+Type a moment. Mint it onchain on X Layer. Pay in USDT0 via x402 v2.
+Get back a permanent transaction hash on @oklink explorer.
+
+▶️ 90s demo: https://mintmoment.onrender.com/assets/demo-90s.mp4
+🌐 Live: https://mintmoment.onrender.com
+
+Built for the @OKX AI Genesis Hackathon. Lifestyle Companion category.
+
+#OKXAI
+```
+
+Then tweet 2/5, 3/5, 4/5, 5/5 from the template below.
 ```
 🧵 Meet MintMoment — a Lifestyle Companion ASP on @okx AI marketplace.
 

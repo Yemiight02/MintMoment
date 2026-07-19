@@ -53,33 +53,9 @@ const AGENT_DESCRIPTION = process.env.AGENT_DESCRIPTION ||
 // Service catalog — single source of truth for pricing + x402 manifest
 // ─────────────────────────────────────────────────────────────────────────────
 const SERVICES = [
-  {
-    id: 'quick_moment',
-    name: 'Quick Moment',
-    tagline: 'A free text-to-preview keepsake — no mint, no wallet.',
-    priceUSDT: '0',
-    priceAtomic: '0',
-    payPerCall: false,
-    free: true,
-    badge: 'Try free',
-    description:
-      'Type a moment — first coffee with someone, a rainy Sunday, the day you got the offer — and MintMoment composes a keepsake preview (title, palette, caption) instantly. No wallet, no onchain write, no commitment. The fastest way to feel what a mint feels like.',
-    inputSchema: {
-      type: 'object',
-      required: ['moment'],
-      properties: {
-        moment: { type: 'string', minLength: 8, maxLength: 500, description: 'Plain-text description of the moment.' },
-        mood: { type: 'string', enum: ['calm', 'joyful', 'nostalgic', 'bold', 'tender'], default: 'calm' },
-      },
-    },
-    outputExample: {
-      id: 'mm_8f3a2c',
-      title: 'First Coffee, Long Table',
-      palette: ['#F4E9D8', '#A47551', '#3B2F2F'],
-      caption: 'A morning that started ordinary and became the kind you remember.',
-      preview: true,
-    },
-  },
+// Note: services are listed in cheapest-paid-first order so the
+// OKX.AI marketplace shows the right "starting price" (it picks the
+// lowest fee; Quick Moment is free, so it showed 0.00 USDT).
   {
     id: 'mint_keepsake',
     name: 'Mint Keepsake',
@@ -250,6 +226,33 @@ const SERVICES = [
         { id: 'mm_s3', title: 'Last Coffee, Long Table', txHash: '0x...' },
       ],
       narrative: 'A long weekend in Lisbon began with a taxi driver who...',
+    },
+  },
+  {
+    id: 'quick_moment',
+    name: 'Quick Moment',
+    tagline: 'A free text-to-preview keepsake — no mint, no wallet.',
+    priceUSDT: '0',
+    priceAtomic: '0',
+    payPerCall: false,
+    free: true,
+    badge: 'Try free',
+    description:
+      'Type a moment — first coffee with someone, a rainy Sunday, the day you got the offer — and MintMoment composes a keepsake preview (title, palette, caption) instantly. No wallet, no onchain write, no commitment. The fastest way to feel what a mint feels like.',
+    inputSchema: {
+      type: 'object',
+      required: ['moment'],
+      properties: {
+        moment: { type: 'string', minLength: 8, maxLength: 500, description: 'Plain-text description of the moment.' },
+        mood: { type: 'string', enum: ['calm', 'joyful', 'nostalgic', 'bold', 'tender'], default: 'calm' },
+      },
+    },
+    outputExample: {
+      id: 'mm_8f3a2c',
+      title: 'First Coffee, Long Table',
+      palette: ['#F4E9D8', '#A47551', '#3B2F2F'],
+      caption: 'A morning that started ordinary and became the kind you remember.',
+      preview: true,
     },
   },
 ];

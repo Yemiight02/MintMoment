@@ -1019,6 +1019,18 @@ function renderLandingPage(services, recent) {
       color: #fff;
     }
     .demo-sub { color: rgba(244,233,216,0.7); margin: 0 0 28px; }
+    /* How to use in 30s */
+    .howto { margin: 64px 0; }
+    .howto-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 32px; }
+    @media (max-width: 820px) { .howto-grid { grid-template-columns: 1fr; } }
+    .howto-step { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 28px 24px; }
+    .step-num { width: 36px; height: 36px; border-radius: 50%; background: var(--accent); color: #faf6f0; font-family: Georgia, serif; font-size: 18px; display: grid; place-items: center; margin-bottom: 16px; }
+    .howto-step h3 { margin: 0 0 8px; font-size: 18px; }
+    .howto-step p { color: #4a4039; font-size: 14px; margin: 0 0 12px; }
+    .step-example { font-family: "SF Mono", "JetBrains Mono", Menlo, monospace; font-size: 12px; color: var(--muted); padding: 8px 12px; background: var(--bg); border-radius: 6px; border-left: 3px solid var(--accent); }
+    .howto-cta { margin-top: 32px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; justify-content: center; }
+    .howto-note { color: var(--muted); font-size: 14px; }
+
     .demo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
     @media (max-width: 820px) { .demo-grid { grid-template-columns: 1fr; } }
     .demo-panel { background: rgba(0,0,0,0.25); border: 1px solid rgba(244,233,216,0.1); border-radius: 10px; padding: 20px; }
@@ -1147,6 +1159,7 @@ function renderLandingPage(services, recent) {
       </div>
       <div class="nav-links">
         <a href="#services">Services</a>
+        <a href="#howto">How to use</a>
         <a href="#live">Live demo</a>
         <a href="#recent">Recent</a>
         <a href="#api">For agents</a>
@@ -1172,6 +1185,35 @@ function renderLandingPage(services, recent) {
     </div>
 
     <!-- ─── LIVE x402 DEMO ──────────────────────────────────────────── -->
+    <section class="howto" id="howto">
+      <h2 class="section-title">Try MintMoment in 30 seconds</h2>
+      <p class="section-sub">No signup. No app. Just three steps from a moment in your head to a permanent onchain keepsake.</p>
+      <div class="howto-grid">
+        <article class="howto-step">
+          <div class="step-num">1</div>
+          <h3>Describe a moment</h3>
+          <p>Type any moment worth remembering. "First coffee with M." "The day I got the offer." A 6-word moment is enough.</p>
+          <div class="step-example">"The day everything changed."</div>
+        </article>
+        <article class="howto-step">
+          <div class="step-num">2</div>
+          <h3>Pick how you want it</h3>
+          <p>Free preview, a single $0.05 mint, a $0.10 gift, a $0.15 anniversary, a 5-mint timeline, or a cinematic story. Same x402 flow, same onchain receipt.</p>
+          <div class="step-example">$0.05 for one permanent moment</div>
+        </article>
+        <article class="howto-step">
+          <div class="step-num">3</div>
+          <h3>Get a tx hash on X Layer</h3>
+          <p>We settle USDT0 in ~3 seconds and return a permanent transaction hash on OKLink X Layer explorer. Yours forever, can't be taken down, viewable by anyone.</p>
+          <div class="step-example">"0xabc...def · oklink.com/xlayer"</div>
+        </article>
+      </div>
+      <div class="howto-cta">
+        <a href="#live" class="btn btn-primary">Try the live demo →</a>
+        <span class="howto-note">Free preview, no wallet needed. Paid mints work with any X Layer wallet.</span>
+      </div>
+    </section>
+
     <section class="demo" id="live">
       <h2>Try the live x402 flow</h2>
       <p class="demo-sub">

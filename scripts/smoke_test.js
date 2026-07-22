@@ -54,7 +54,7 @@ function makePayment(amount) {
     record('GET /health returns 200', r.status === 200, `status=${r.status}`);
     record('GET /health has agent name', r.json?.agent === 'MintMoment');
     record('GET /health has chain eip155:196', r.json?.chain === 'eip155:196');
-    record('GET /health reports 6 services', r.json?.services === 6, `services=${r.json?.services}`);
+    record('GET /health reports 7 services', r.json?.services === 7, `services=${r.json?.services}`);
   }
 
   // ── 2. /.well-known/x402 ────────────────────────────────────────────
@@ -62,7 +62,7 @@ function makePayment(amount) {
     const r = await get('/.well-known/x402');
     record('GET /.well-known/x402 returns 200', r.status === 200);
     record('manifest x402Version is 2', r.json?.x402Version === 2);
-    record('manifest has 6 services', Array.isArray(r.json?.services) && r.json.services.length === 6);
+    record('manifest has 7 services', Array.isArray(r.json?.services) && r.json.services.length === 7);
     record('manifest network is eip155:196', r.json?.network === 'eip155:196');
     record('manifest has agentCategory Lifestyle', r.json?.agentCategory === 'Lifestyle');
     const ids = r.json?.services?.map((s) => s.id) || [];
@@ -75,7 +75,7 @@ function makePayment(amount) {
   {
     const r = await get('/api/services');
     record('GET /api/services returns 200', r.status === 200);
-    record('/api/services lists 6 services', r.json?.services?.length === 6);
+    record('/api/services lists 7 services', r.json?.services?.length === 7);
   }
 
   // ── 4. /api/recent (live social proof) ──────────────────────────────

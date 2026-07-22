@@ -27,7 +27,7 @@
 import express from 'express';
 import cors from 'cors';
 import crypto from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join as pathJoin, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config as loadEnv } from 'dotenv';
@@ -56,6 +56,36 @@ const SERVICES = [
 // Note: services are listed in cheapest-paid-first order so the
 // OKX.AI marketplace shows the right "starting price" (it picks the
 // lowest fee; Quick Moment is free, so it showed 0.00 USDT).
+  {
+    id: 'mint_keepsake_trial',
+    name: 'Mint Trial',
+    tagline: 'Real onchain mint for one-tenth of a cent. The impulse-buy tier.',
+    priceUSDT: '0.001',
+    priceAtomic: '1000', // 0.001 * 10^6
+    payPerCall: true,
+    free: false,
+    badge: 'Try real',
+    description:
+      'The same onchain mint as Mint Keepsake, priced at one-tenth of a cent (0.001 USDT0). Real X Layer transaction hash, real onchain proof, real sold count — just priced so anyone can try it without thinking. Use it once, see the workflow end-to-end, then upgrade to a full tier.',
+    inputSchema: {
+      type: 'object',
+      required: ['moment'],
+      properties: {
+        moment: { type: 'string', minLength: 8, maxLength: 500 },
+        mood: { type: 'string', enum: ['calm', 'joyful', 'nostalgic', 'bold', 'tender'], default: 'calm' },
+        recipient: { type: 'string' },
+      },
+    },
+    outputExample: {
+      id: 'mm_trial_xyz',
+      title: 'First Try Onchain',
+      palette: ['#F4E9D8', '#A47551'],
+      caption: 'A real mint, one-tenth of a cent.',
+      txHash: '0x...',
+      explorerUrl: 'https://www.oklink.com/xlayer/tx/0x...',
+      mintedAt: '2026-07-22T00:00:00.000Z',
+    },
+  },
   {
     id: 'mint_keepsake',
     name: 'Mint Keepsake',
@@ -381,17 +411,69 @@ function generateMockTxHash(seed) {
   return '0x' + crypto.createHash('sha256').update(seed + 'tx-' + Date.now()).digest('hex');
 }
 
-// In-memory keepsake store (single-instance demo; for multi-instance, swap to
-// a small SQLite or KV layer). Keeps the demo dependency-free.
-const keepsakeStore = new Map();
+// ─────────────────────────────────────────────────────────────────────────────
+// Persistent recent-mints log — survives restarts so social proof sticks.
+// File-backed, no external deps. Path inside the container: /tmp/mintmoment/recent.json
+// ─────────────────────────────────────────────────────────────────────────────
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = pathJoin(__filename, '..');
+const DATA_DIR = process.env.MINT_DATA_DIR || '/tmp/mintmoment';
+const RECENT_FILE = pathJoin(DATA_DIR, 'recent.json');
+const KEEPSAKES_FILE = pathJoin(DATA_DIR, 'keepsakes.json');
+const RECENT_CAP = 50;
 
-// Recent mints log (most recent first, capped) — used by /api/recent and the
-// landing page social-proof section.
-const recentMints = [];
-const RECENT_CAP = 20;
+try { mkdirSync(DATA_DIR, { recursive: true }); } catch (_) {}
+
+// File-backed recent mints (most recent first)
+let recentMints = [];
+function loadRecent() {
+  try {
+    if (existsSync(RECENT_FILE)) {
+      const raw = readFileSync(RECENT_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) recentMints = parsed.slice(0, RECENT_CAP);
+    }
+  } catch (err) {
+    console.warn(`[storage] failed to load recent: ${err.message}`);
+  }
+}
+function saveRecent() {
+  try {
+    writeFileSync(RECENT_FILE, JSON.stringify(recentMints));
+  } catch (err) {
+    console.warn(`[storage] failed to save recent: ${err.message}`);
+  }
+}
+
+// File-backed keepsake store (lookup by id)
+let keepsakeStore = new Map();
+function loadKeepsakes() {
+  try {
+    if (existsSync(KEEPSAKES_FILE)) {
+      const raw = readFileSync(KEEPSAKES_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        for (const k of parsed) if (k && k.id) keepsakeStore.set(k.id, k);
+      }
+    }
+  } catch (err) {
+    console.warn(`[storage] failed to load keepsakes: ${err.message}`);
+  }
+}
+function saveKeepsakes() {
+  try {
+    writeFileSync(KEEPSAKES_FILE, JSON.stringify([...keepsakeStore.values()].slice(-200)));
+  } catch (err) {
+    console.warn(`[storage] failed to save keepsakes: ${err.message}`);
+  }
+}
+
+loadRecent();
+loadKeepsakes();
 
 function persistKeepsake(keepsake) {
   keepsakeStore.set(keepsake.id, keepsake);
+  saveKeepsakes();
 }
 
 function recordMint(keepsake, serviceId) {
@@ -407,10 +489,18 @@ function recordMint(keepsake, serviceId) {
     recipient: keepsake.recipient,
   });
   while (recentMints.length > RECENT_CAP) recentMints.pop();
+  saveRecent();
 }
 
-// Seed a few demo mints so the live page has social proof on first load
+// Seed a few demo mints on first boot only (if disk is empty).
+// After first run, recent mints come from /tmp/mintmoment/recent.json — so
+// restarts don't wipe the social proof.
 function seedDemoMints() {
+  if (recentMints.length > 0) {
+    console.log(`[seed] skipping seed: ${recentMints.length} mints already in persistent store`);
+    return;
+  }
+
   const samples = [
     { moment: 'First coffee with M, the morning everything changed.', mood: 'tender', recipient: RECEIVE_ADDRESS },
     { moment: 'A long walk home in the rain after the news.',            mood: 'nostalgic', recipient: RECEIVE_ADDRESS },
@@ -622,8 +712,6 @@ app.get('/', (_req, res) => {
 });
 
 // ── Static assets (video demo, etc.) ─────────────────────────────────────
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = pathJoin(__filename, '..');
 const ASSETS_DIR = pathJoin(__dirname, '..', 'assets');
 
 const MIME = {
@@ -692,8 +780,8 @@ function paidHandler(service) {
     const mintedAt = new Date().toISOString();
     const txHash = generateMockTxHash(payment.payload.txHash + recipient + service.id);
 
-    // mint_keepsake ────────────────────────────────────────────────────────
-    if (service.id === 'mint_keepsake') {
+    // mint_keepsake (and its micro-priced trial) ─────────────────────────
+    if (service.id === 'mint_keepsake' || service.id === 'mint_keepsake_trial') {
       if (!body.moment || body.moment.length < 8) {
         return res.status(400).json({ error: 'invalid_input', message: '`moment` required, min 8 chars.' });
       }
@@ -856,7 +944,7 @@ function paidHandler(service) {
 }
 
 // Wire each paid service
-['mint_keepsake', 'gift_keepsake', 'anniversary_mint', 'monthly_timeline', 'premium_story'].forEach((id) => {
+['mint_keepsake_trial', 'mint_keepsake', 'gift_keepsake', 'anniversary_mint', 'monthly_timeline', 'premium_story'].forEach((id) => {
   app.post(`/api/${id}`, paidHandler(SERVICE_BY_ID[id]));
 });
 

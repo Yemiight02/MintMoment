@@ -536,22 +536,52 @@ function buildPaymentRequired(service) {
  * PAYMENT_ASSET_ADDRESS.transfer events on X Layer.
  */
 function parsePaymentHeader(req, _service) {
-  const raw = req.header('X-PAYMENT') || req.header('x-payment');
+  const raw = req.header('X-PAYMENT-SIGNATURE') || req.header('PAYMENT-SIGNATURE')
+           || req.header('X-PAYMENT')          || req.header('x-payment');
   if (!raw) return { ok: false, reason: 'missing' };
+  let payload;
   try {
-    const decoded = Buffer.from(raw, 'base64').toString('utf8');
-    const payload = JSON.parse(decoded);
-    if (!payload.txHash) return { ok: false, reason: 'missing txHash' };
-    if (!/^0x[a-fA-F0-9]{64}$/.test(payload.txHash)) {
-      return { ok: false, reason: 'invalid txHash format' };
-    }
-    if (!payload.from || !/^0x[a-fA-F0-9]{40}$/.test(payload.from)) {
-      return { ok: false, reason: 'invalid from address' };
-    }
-    return { ok: true, payload };
+    const decoded = raw.startsWith('{') ? raw : Buffer.from(raw, 'base64').toString('utf8');
+    payload = JSON.parse(decoded);
   } catch (err) {
     return { ok: false, reason: `malformed: ${err.message}` };
   }
+
+  // ── OKX x402 v2 standard envelope ─────────────────────────────────
+  // { accepted: { amount, asset, payTo, network, ... },
+  //   payload:  { signature, authorization: { from, value, ... } },
+  //   x402Version: 2 }
+  if (payload && payload.x402Version === 2 && payload.accepted && payload.payload) {
+    const acc = payload.accepted;
+    const pld = payload.payload;
+    const auth = pld.authorization || {};
+    if (!pld.signature || !pld.signature.startsWith('0x') || pld.signature.length < 130) {
+      return { ok: false, reason: 'invalid OKX v2 signature' };
+    }
+    if (!auth.from || !/^0x[a-fA-F0-9]{40}$/.test(auth.from)) {
+      return { ok: false, reason: 'invalid OKX v2 from address' };
+    }
+    // Derive a synthetic txHash from the EIP-3009 signature so downstream
+    // generateMockTxHash stays deterministic. The first 32 bytes of the
+    // keccak256 of the signature give us 64 hex chars.
+    let txHash;
+    try {
+      txHash = require('node:crypto').createHash('sha256').update(pld.signature).digest('hex');
+    } catch {
+      txHash = pld.signature.slice(0, 66);
+    }
+    return { ok: true, payload: { txHash, from: auth.from, format: 'okx-v2', accepted: acc, payload: pld } };
+  }
+
+  // ── Legacy custom format (backward compat with own demo clients) ───
+  if (!payload.txHash) return { ok: false, reason: 'missing txHash' };
+  if (!/^0x[a-fA-F0-9]{64}$/.test(payload.txHash)) {
+    return { ok: false, reason: 'invalid txHash format' };
+  }
+  if (!payload.from || !/^0x[a-fA-F0-9]{40}$/.test(payload.from)) {
+    return { ok: false, reason: 'invalid from address' };
+  }
+  return { ok: true, payload };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

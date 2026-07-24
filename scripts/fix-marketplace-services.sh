@@ -36,6 +36,22 @@ SERVICES_JSON=$(cat <<'EOF'
 [
   {
     "operation": "create",
+    "serviceName": "verify_address",
+    "serviceDescription": "Risk-score any wallet or token via SentriAgent (A2A, agent 5103). Returns 0-100 score, level, recommendation, and underlying signals.\nThe user provides: chain (ethereum/bsc/polygon/arbitrum/base/xlayer/solana) and an address (0x... or base58).",
+    "serviceType": "A2MCP",
+    "fee": "0.05",
+    "endpoint": "https://mintmoment.onrender.com/api/verify_address"
+  },
+  {
+    "operation": "create",
+    "serviceName": "risk_scored_gift",
+    "serviceDescription": "Same as Gift Keepsake, but the recipient X Layer address is risk-scored via SentriAgent (A2A, agent 5103) before the mint. Configurable risk tolerance. HIGH/CRITICAL risk refuses the mint.\nThe user provides: a moment, a recipient X Layer address (0x...), an optional toName, an optional note, and a riskTolerance (strict/balanced/permissive).",
+    "serviceType": "A2MCP",
+    "fee": "0.15",
+    "endpoint": "https://mintmoment.onrender.com/api/risk_scored_gift"
+  },
+  {
+    "operation": "create",
     "serviceName": "mint_keepsake_trial",
     "serviceDescription": "A real onchain mint for one-tenth of a cent. The impulse-buy tier. Real X Layer transaction hash, real onchain proof. Lowest entry point, no friction.\nThe user provides: a moment (8+ chars) and an optional mood.",
     "serviceType": "A2MCP",

@@ -145,7 +145,7 @@ function extractChainAndAddress(text) {
 
 const X_LAYER_CHAIN_ID = process.env.X_LAYER_CHAIN_ID || '196';
 const PAYMENT_ASSET = process.env.PAYMENT_ASSET || 'USDT0';
-const PAYMENT_ASSET_ADDRESS = process.env.PAYMENT_ASSET_ADDRESS || '0x779ded0c9e1022225f8a06d3a3c4b3f1e6d5b4d3';
+const PAYMENT_ASSET_ADDRESS = process.env.PAYMENT_ASSET_ADDRESS || '0x779ded0c9e1022225f8e0630b35a9b54be713736';
 const PAYMENT_ASSET_DECIMALS = parseInt(process.env.PAYMENT_ASSET_DECIMALS || '6', 10);
 const X_LAYER_EXPLORER = process.env.X_LAYER_EXPLORER || 'https://www.oklink.com/xlayer';
 const AGENT_NAME = process.env.AGENT_NAME || 'MintMoment';
@@ -1975,7 +1975,7 @@ X-PAYMENT: &lt;base64 settlement proof&gt;
           txHash: fakeTx,
           from: '0x8bfc0f414be2f70c5930f7713be1db188eb0c3bd',
           amount: '50000',
-          asset: '0x779ded0c9e1022225f8a06d3a3c4b3f1e6d5b4d3',
+          asset: '0x779ded0c9e1022225f8e0630b35a9b54be713736',
         }));
         appendLog('  txHash:   ' + fakeTx.slice(0, 18) + '…');
 

@@ -81,6 +81,68 @@ async function sentriCall(tool, args) {
   }
   return JSON.parse(text);
 }
+
+// Parse an OKX.AI marketplace "Use" command into structured data.
+// Examples it must accept:
+//   "I'd like to use the service provided by Agent 5103：
+//    Service title: SentriAgent Risk Tools
+//    Service type: A2MCP
+//    Endpoint: https://sentriagent.xyz/mcp
+//    Please use OKX Agent Payments Protocol to send a request to this endpoint"
+function parseMarketplaceCommand(text) {
+  const agentMatch = text.match(/Agent\s+(\d+)/i);
+  const titleMatch = text.match(/Service\s+title[:：]\s*([^\n]+)/i);
+  const typeMatch = text.match(/Service\s+type[:：]\s*([^\n]+)/i);
+  const endpointMatch = text.match(/Endpoint[:：]\s*(https?:\/\/[^\s\n]+)/i);
+  if (!agentMatch) return { ok: false, error: 'Could not find "Agent <ID>" in the command.' };
+  if (!endpointMatch) return { ok: false, error: 'Could not find "Endpoint: <URL>" in the command.' };
+  return {
+    ok: true,
+    agentId: parseInt(agentMatch[1], 10),
+    serviceTitle: titleMatch ? titleMatch[1].trim() : null,
+    serviceType: typeMatch ? typeMatch[1].trim() : null,
+    endpoint: endpointMatch[1].trim(),
+  };
+}
+
+// Extract chain + address from a natural-language request.
+// Supports patterns like:
+//   "check 0x... on ethereum"
+//   "risk-score wallet 0x... on xlayer"
+//   "assess token 0x... on bsc"
+//   "verify 0x..." (defaults to xlayer, wallet target)
+function extractChainAndAddress(text) {
+  const addrMatch = text.match(/0x[a-fA-F0-9]{40}/);
+  const base58Match = text.match(/\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/);
+  const lower = text.toLowerCase();
+  let chain = null;
+  if (/\b(ethereum|eth|mainnet)\b/.test(lower)) chain = 'ethereum';
+  else if (/\b(bsc|bnb|binance)\b/.test(lower)) chain = 'bsc';
+  else if (/\b(polygon|matic)\b/.test(lower)) chain = 'polygon';
+  else if (/\b(arbitrum|arb)\b/.test(lower)) chain = 'arbitrum';
+  else if (/\b(base)\b/.test(lower)) chain = 'base';
+  else if (/\b(xlayer|xlayer|x-layer|okx chain|okxchain)\b/.test(lower)) chain = 'xlayer';
+  else if (/\b(solana|sol)\b/.test(lower)) chain = 'solana';
+  // Heuristic: if no chain mentioned, default to xlayer (this is MintMoment's home)
+  if (!chain) chain = 'xlayer';
+  // Determine target
+  let target = 'wallet';
+  if (/\b(token|contract|coin)\b/.test(lower)) target = 'token';
+  const address = addrMatch ? addrMatch[0] : (base58Match ? base58Match[0] : null);
+  if (!address) {
+    return { ok: false, error: 'Could not find a wallet or token address (0x... or base58) in the request.' };
+  }
+  if (target === 'token' && !/^0x[a-fA-F0-9]{40}$/.test(address)) {
+    return { ok: false, error: 'Token addresses must be EVM format (0x...).' };
+  }
+  return {
+    ok: true,
+    tool: target === 'token' ? 'assess_token' : 'assess_wallet',
+    arguments: { chain, address },
+    source: 'natural_language',
+  };
+}
+
 const X_LAYER_CHAIN_ID = process.env.X_LAYER_CHAIN_ID || '196';
 const PAYMENT_ASSET = process.env.PAYMENT_ASSET || 'USDT0';
 const PAYMENT_ASSET_ADDRESS = process.env.PAYMENT_ASSET_ADDRESS || '0x779ded0c9e1022225f8a06d3a3c4b3f1e6d5b4d3';
@@ -163,6 +225,33 @@ const SERVICES = [
       upstream: { agent: 'SentriAgent', agentId: 5103, endpoint: 'https://sentriagent.xyz/mcp', tool: 'assess_wallet', paymentMade: false },
       latencyMs: 828,
       timestamp: '2026-07-24T08:53:35.522Z',
+    },
+  },
+  {
+    id: 'forward_command',
+    name: 'Forward Command',
+    tagline: 'Paste any OKX.AI marketplace command. MintMoment parses it, pays the upstream agent, returns the result.',
+    priceUSDT: '0.05',
+    priceAtomic: '50000',
+    payPerCall: true,
+    free: false,
+    badge: 'A2A · router',
+    description:
+      'Accepts a standard OKX.AI marketplace "Use" command (e.g. "I\'d like to use the service provided by Agent 5103: Service title: SentriAgent Risk Tools, Service type: A2MCP, Endpoint: https://sentriagent.xyz/mcp, Please use OKX Agent Payments Protocol to send a request to this endpoint") plus the user\'s request, parses the command, pays the upstream agent, and returns their response wrapped in a MintMoment receipt. Currently supports SentriAgent (agent 5103, assess_wallet and assess_token). Other agents return 501 Not Implemented.\nThe user provides: a `command` string (the marketplace prompt) and a `request` string (the natural-language task, e.g. "check 0xdAC17F958D2ee523a2206206994597C13D831ec7 on ethereum").',
+    inputSchema: {
+      type: 'object',
+      required: ['command', 'request'],
+      properties: {
+        command: { type: 'string', minLength: 20, maxLength: 2000 },
+        request: { type: 'string', minLength: 5, maxLength: 1000 },
+      },
+    },
+    outputExample: {
+      status: 'ok',
+      parsed: { agentId: 5103, agentName: 'SentriAgent', serviceTitle: 'SentriAgent Risk Tools', endpoint: 'https://sentriagent.xyz/mcp' },
+      dispatched: { tool: 'assess_token', arguments: { chain: 'ethereum', address: '0x...' } },
+      result: { score: 50, level: 'MEDIUM', proceed: true, recommendation: '...', signals: '...' },
+      receipt: { txHash: '0x...', paidAmount: '0.05', paidAsset: 'USDT0', upstream: { agent: 'SentriAgent', tool: 'assess_token', paymentMade: false } },
     },
   },
   {
@@ -895,6 +984,76 @@ function paidHandler(service) {
     const mintedAt = new Date().toISOString();
     const txHash = generateMockTxHash(payment.payload.txHash + recipient + service.id);
 
+    // forward_command (A2A: parse OKX marketplace command, call upstream agent)
+    if (service.id === 'forward_command') {
+      const { command, request } = body;
+      if (!command || typeof command !== 'string' || command.length < 20) {
+        return res.status(400).json({ error: 'invalid_input', message: '`command` is required and must be at least 20 chars (the OKX.AI marketplace prompt).' });
+      }
+      if (!request || typeof request !== 'string' || request.length < 5) {
+        return res.status(400).json({ error: 'invalid_input', message: '`request` is required and must be at least 5 chars (the user\'s natural-language task).' });
+      }
+      // Parse the marketplace command
+      const parsed = parseMarketplaceCommand(command);
+      if (!parsed.ok) {
+        return res.status(400).json({ error: 'invalid_command', message: parsed.error, hint: 'Expected format: "I\'d like to use the service provided by Agent <ID>: Service title: <T>, Service type: <A2MCP|A2A>, Endpoint: <URL>, Please use OKX Agent Payments Protocol to send a request to this endpoint"' });
+      }
+      // Dispatch: only SentriAgent (5103) is wired up right now
+      if (parsed.agentId !== 5103) {
+        return res.status(501).json({
+          error: 'unsupported_agent',
+          message: `Forwarding to agent ${parsed.agentId} is not implemented yet. Currently only SentriAgent (5103) is supported.`,
+          parsed,
+        });
+      }
+      // Extract chain + address from the user's request
+      const dispatch = extractChainAndAddress(request);
+      if (!dispatch.ok) {
+        return res.status(400).json({
+          error: 'unparseable_request',
+          message: dispatch.error,
+          hint: 'Try: "check 0x... on ethereum" or "risk-score wallet 0x... on xlayer" or "assess token 0x... on bsc"',
+          parsed,
+        });
+      }
+      // Call SentriAgent
+      const t0 = Date.now();
+      let sentriResult;
+      let sentriError = null;
+      try {
+        sentriResult = await sentriCall(dispatch.tool, dispatch.arguments);
+      } catch (e) {
+        sentriError = e.message;
+        sentriResult = { score: null, level: 'UNKNOWN', proceed: false, recommendation: 'SentriAgent unavailable: ' + sentriError, signals: {} };
+      }
+      return res.json({
+        status: 'ok',
+        parsed: {
+          agentId: parsed.agentId,
+          agentName: 'SentriAgent',
+          serviceTitle: parsed.serviceTitle,
+          endpoint: parsed.endpoint,
+        },
+        dispatched: { tool: dispatch.tool, arguments: dispatch.arguments, source: dispatch.source },
+        result: sentriResult,
+        receipt: {
+          txHash,
+          paidAmount: service.priceUSDT,
+          paidAsset: PAYMENT_ASSET,
+          mintedAt,
+          latencyMs: Date.now() - t0,
+          upstream: {
+            agent: 'SentriAgent',
+            agentId: 5103,
+            endpoint: SENTRI_ENDPOINT,
+            tool: dispatch.tool,
+            paymentMade: Boolean(SENTRI_PAYMENT_HEADER),
+            error: sentriError,
+          },
+        },
+      });
+    }
+
     // verify_address (A2A: SentriAgent assess_wallet / assess_token) ─────
     if (service.id === 'verify_address') {
       const { chain, address, target = 'wallet' } = body;
@@ -1186,7 +1345,7 @@ function paidHandler(service) {
 }
 
 // Wire each paid service
-['mint_keepsake_trial', 'verify_address', 'mint_keepsake', 'risk_scored_gift', 'gift_keepsake', 'anniversary_mint', 'monthly_timeline', 'premium_story'].forEach((id) => {
+['mint_keepsake_trial', 'verify_address', 'forward_command', 'mint_keepsake', 'risk_scored_gift', 'gift_keepsake', 'anniversary_mint', 'monthly_timeline', 'premium_story'].forEach((id) => {
   app.post(`/api/${id}`, paidHandler(SERVICE_BY_ID[id]));
 });
 

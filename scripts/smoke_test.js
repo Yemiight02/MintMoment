@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ─────────────────────────────────────────────────────────────────────────────
-// MintMoment — full smoke test (covers all 9 services + x402 flow + landing)
+// MintMoment — full smoke test (covers all 10 services + x402 flow + landing)
 // Usage:
 //   node scripts/smoke_test.js
 //   BASE=https://mintmoment.onrender.com node scripts/smoke_test.js
@@ -54,7 +54,7 @@ function makePayment(amount) {
     record('GET /health returns 200', r.status === 200, `status=${r.status}`);
     record('GET /health has agent name', r.json?.agent === 'MintMoment');
     record('GET /health has chain eip155:196', r.json?.chain === 'eip155:196');
-    record('GET /health reports 9 services', r.json?.services === 9, `services=${r.json?.services}`);
+    record('GET /health reports 10 services', r.json?.services === 10, `services=${r.json?.services}`);
   }
 
   // ── 2. /.well-known/x402 ────────────────────────────────────────────
@@ -62,7 +62,7 @@ function makePayment(amount) {
     const r = await get('/.well-known/x402');
     record('GET /.well-known/x402 returns 200', r.status === 200);
     record('manifest x402Version is 2', r.json?.x402Version === 2);
-    record('manifest has 9 services', Array.isArray(r.json?.services) && r.json.services.length === 9);
+    record('manifest has 10 services', Array.isArray(r.json?.services) && r.json.services.length === 10);
     record('manifest network is eip155:196', r.json?.network === 'eip155:196');
     record('manifest has agentCategory Lifestyle', r.json?.agentCategory === 'Lifestyle');
     const ids = r.json?.services?.map((s) => s.id) || [];
@@ -75,7 +75,7 @@ function makePayment(amount) {
   {
     const r = await get('/api/services');
     record('GET /api/services returns 200', r.status === 200);
-    record('/api/services lists 9 services', r.json?.services?.length === 9);
+    record('/api/services lists 10 services', r.json?.services?.length === 10);
   }
 
   // ── 4. /api/recent (live social proof) ──────────────────────────────
@@ -219,8 +219,8 @@ function makePayment(amount) {
     const text = await r.text();
     record('GET / returns HTML', r.status === 200 && text.startsWith('<!doctype html>'));
     record('Landing page mentions MintMoment', text.includes('MintMoment'));
-    record('Landing page lists all 9 services', [
-      'Quick Moment', 'Mint Trial', 'Verify Address', 'Mint Keepsake', 'Risk-Scored Gift', 'Gift Keepsake', 'Anniversary Mint', 'Monthly Timeline', 'Premium Story'
+    record('Landing page lists all 10 services', [
+      'Quick Moment', 'Mint Trial', 'Verify Address', 'Forward Command', 'Mint Keepsake', 'Risk-Scored Gift', 'Gift Keepsake', 'Anniversary Mint', 'Monthly Timeline', 'Premium Story'
     ].every((n) => text.includes(n)));
     record('Landing page has live x402 demo', text.includes('demo-log') || text.includes('id="demo-paid-btn"'));
     record('Landing page has recent mints feed', text.includes('recent-tx'));

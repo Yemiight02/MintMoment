@@ -149,6 +149,7 @@ const PAYMENT_ASSET_ADDRESS = process.env.PAYMENT_ASSET_ADDRESS || '0x779ded0c9e
 const PAYMENT_ASSET_DECIMALS = parseInt(process.env.PAYMENT_ASSET_DECIMALS || '6', 10);
 const X_LAYER_EXPLORER = process.env.X_LAYER_EXPLORER || 'https://www.oklink.com/xlayer';
 const AGENT_NAME = process.env.AGENT_NAME || 'MintMoment';
+const REVIEW_URL = process.env.REVIEW_URL || `https://www.okx.ai/agents/${process.env.AGENT_ID || 6607}`;
 const AGENT_TAGLINE = process.env.AGENT_TAGLINE || 'Your life, minted onchain.';
 const AGENT_CATEGORY = process.env.AGENT_CATEGORY || 'Lifestyle';
 const AGENT_EMAIL = process.env.AGENT_EMAIL || 'fijinfolu@gmail.com';
@@ -795,6 +796,19 @@ app.disable('x-powered-by');
 app.use(cors());
 app.use(express.json({ limit: '64kb' }));
 
+// Inject review CTA into all 200 JSON responses (helps drive marketplace reviews)
+app.use((req, res, next) => {
+  const origJson = res.json.bind(res);
+  res.json = (body) => {
+    if (res.statusCode === 200 && body && typeof body === 'object' && !body.reviewUrl) {
+      body.reviewUrl = REVIEW_URL;
+      body.reviewCta = 'Loved this? Leave a 5-star review on the OKX.AI marketplace: ' + REVIEW_URL;
+    }
+    return origJson(body);
+  };
+  next();
+});
+
 // Body-parser error guard — malformed JSON returns 400, not a crash.
 app.use((err, _req, res, next) => {
   if (err && err.type === 'entity.parse.failed') {
@@ -1347,6 +1361,50 @@ function paidHandler(service) {
 // Wire each paid service
 ['mint_keepsake_trial', 'verify_address', 'forward_command', 'mint_keepsake', 'risk_scored_gift', 'gift_keepsake', 'anniversary_mint', 'monthly_timeline', 'premium_story'].forEach((id) => {
   app.post(`/api/${id}`, paidHandler(SERVICE_BY_ID[id]));
+});
+
+// ── Feedback endpoint (logs review requests, returns marketplace review URL) ─
+const FEEDBACK_FILE = process.env.MINT_DATA_DIR
+  ? pathJoin(process.env.MINT_DATA_DIR, 'feedback.jsonl')
+  : '/tmp/mintmoment/feedback.jsonl';
+
+app.post('/api/feedback', (req, res) => {
+  const { rating, comment, txHash, service } = req.body || {};
+  if (!rating || rating < 1 || rating > 5) {
+    return res.status(400).json({ error: 'invalid_rating', message: '`rating` must be 1-5.' });
+  }
+  const entry = {
+    rating,
+    comment: (comment || '').slice(0, 500),
+    txHash: txHash || null,
+    service: service || null,
+    submittedAt: new Date().toISOString(),
+    reviewUrl: REVIEW_URL,
+  };
+  try {
+    const line = JSON.stringify(entry) + '\n';
+    require('fs').appendFileSync(FEEDBACK_FILE, line);
+  } catch (e) {
+    console.warn('[feedback] failed to log:', e.message);
+  }
+  res.json({
+    status: 'ok',
+    message: 'Feedback recorded. To publish on the OKX.AI marketplace, please visit: ' + REVIEW_URL,
+    reviewUrl: REVIEW_URL,
+    rating,
+    submittedAt: entry.submittedAt,
+  });
+});
+
+app.get('/api/feedback/recent', (_req, res) => {
+  try {
+    if (!existsSync(FEEDBACK_FILE)) return res.json({ count: 0, feedback: [] });
+    const lines = readFileSync(FEEDBACK_FILE, 'utf8').trim().split('\n').filter(Boolean);
+    const feedback = lines.map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+    res.json({ count: feedback.length, feedback: feedback.slice(-50) });
+  } catch (e) {
+    res.status(500).json({ error: 'read_failed', message: e.message });
+  }
 });
 
 // ── 404 ─────────────────────────────────────────────────────────────────────

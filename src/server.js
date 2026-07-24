@@ -37,6 +37,50 @@ loadEnv();
 const PORT = parseInt(process.env.PORT || '10000', 10);
 const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
 const RECEIVE_ADDRESS = process.env.RECEIVE_ADDRESS || '0x8bfc0f414be2f70c5930f7713be1db188eb0c3bd';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A2A: SentriAgent (OKX.AI agent 5103) — risk scoring for wallets and tokens
+// Endpoint: https://sentriagent.xyz/mcp (JSON-RPC 2.0 over HTTPS)
+// Market listing: https://www.okx.ai/agents/5103
+// Pricing: $0.01 USDT per call
+// Tools: assess_wallet, assess_token, assess_tx, bundle_assess
+// ─────────────────────────────────────────────────────────────────────────────
+const SENTRI_ENDPOINT = process.env.SENTRI_ENDPOINT || 'https://sentriagent.xyz/mcp';
+const SENTRI_PAYMENT_HEADER = process.env.SENTRI_PAYMENT_HEADER || '';
+// Set SENTRI_PAYMENT_HEADER to a real x402 payment base64 string to actually pay
+// SentriAgent. When empty (default), calls run in their free tier. The marketplace
+// usageCount for SentriAgent only ticks when a real on-chain payment settles, so
+// set this env var on Render after acquiring a valid x402 token.
+
+async function sentriCall(tool, args) {
+  const payload = {
+    jsonrpc: '2.0',
+    id: Date.now(),
+    method: 'tools/call',
+    params: { name: tool, arguments: args },
+  };
+  const headers = { 'content-type': 'application/json' };
+  if (SENTRI_PAYMENT_HEADER) headers['x-payment'] = SENTRI_PAYMENT_HEADER;
+  const r = await fetch(SENTRI_ENDPOINT, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  });
+  const json = await r.json();
+  if (json?.error) {
+    const err = new Error(`sentri_error: ${json.error.message || JSON.stringify(json.error)}`);
+    err.sentri = json;
+    throw err;
+  }
+  // MCP returns content[0].text as JSON string
+  const text = json?.result?.content?.[0]?.text;
+  if (!text) {
+    const err = new Error('sentri_error: empty response');
+    err.sentri = json;
+    throw err;
+  }
+  return JSON.parse(text);
+}
 const X_LAYER_CHAIN_ID = process.env.X_LAYER_CHAIN_ID || '196';
 const PAYMENT_ASSET = process.env.PAYMENT_ASSET || 'USDT0';
 const PAYMENT_ASSET_ADDRESS = process.env.PAYMENT_ASSET_ADDRESS || '0x779ded0c9e1022225f8a06d3a3c4b3f1e6d5b4d3';
@@ -84,6 +128,77 @@ const SERVICES = [
       txHash: '0x...',
       explorerUrl: 'https://www.oklink.com/xlayer/tx/0x...',
       mintedAt: '2026-07-22T00:00:00.000Z',
+    },
+  },
+  {
+    id: 'verify_address',
+    name: 'Verify Address',
+    tagline: 'Risk-score any wallet or token via SentriAgent (A2A).',
+    priceUSDT: '0.05',
+    priceAtomic: '50000',
+    payPerCall: true,
+    free: false,
+    badge: 'A2A',
+    description:
+      'Calls SentriAgent (OKX.AI agent 5103) to risk-score a wallet or token address. Returns a 0-100 score, level (LOW/MEDIUM/HIGH/CRITICAL), recommendation, and the underlying signals (GoPlus, De.Fi, OKX onchainos-mcp). Useful as a standalone pre-flight check before any onchain action.\nThe user provides: chain (ethereum, bsc, polygon, arbitrum, base, xlayer, solana) and an address (0x... or base58).',
+    inputSchema: {
+      type: 'object',
+      required: ['chain', 'address'],
+      properties: {
+        chain: { type: 'string', enum: ['ethereum', 'bsc', 'polygon', 'arbitrum', 'base', 'xlayer', 'solana'] },
+        address: { type: 'string', minLength: 20, maxLength: 66 },
+        target: { type: 'string', enum: ['wallet', 'token'], default: 'wallet' },
+      },
+    },
+    outputExample: {
+      id: 'va_xyz',
+      target: 'wallet',
+      chain: 'xlayer',
+      address: '0x1d23...',
+      score: 65,
+      level: 'MEDIUM',
+      proceed: true,
+      recommendation: 'CAUTION: Medium risk. Limit position size, verify manually.',
+      signals: { goplus: '...', defi: '...', okx: '...' },
+      upstream: { agent: 'SentriAgent', agentId: 5103, endpoint: 'https://sentriagent.xyz/mcp', tool: 'assess_wallet', paymentMade: false },
+      latencyMs: 828,
+      timestamp: '2026-07-24T08:53:35.522Z',
+    },
+  },
+  {
+    id: 'risk_scored_gift',
+    name: 'Risk-Scored Gift',
+    tagline: 'Gift a moment to anyone. Recipient wallet risk-scored via SentriAgent before mint.',
+    priceUSDT: '0.15',
+    priceAtomic: '150000',
+    payPerCall: true,
+    free: false,
+    badge: 'A2A · safer',
+    description:
+      'Same as Gift Keepsake, but the recipient address is risk-scored via SentriAgent (OKX.AI agent 5103) before the mint. If the recipient is HIGH or CRITICAL risk, the mint is refused and a clear warning is returned. If LOW or MEDIUM, the mint proceeds and the keepsake includes a risk badge.\nThe user provides: a moment, the recipient X Layer address, an optional toName, and an optional note.',
+    inputSchema: {
+      type: 'object',
+      required: ['moment', 'recipient'],
+      properties: {
+        moment: { type: 'string', minLength: 8, maxLength: 500 },
+        recipient: { type: 'string', description: 'X Layer address (0x...) of the gift recipient.' },
+        toName: { type: 'string', maxLength: 60 },
+        note: { type: 'string', maxLength: 200 },
+        mood: { type: 'string', enum: ['calm', 'joyful', 'nostalgic', 'bold', 'tender'], default: 'tender' },
+        riskTolerance: { type: 'string', enum: ['strict', 'balanced', 'permissive'], default: 'balanced' },
+      },
+    },
+    outputExample: {
+      status: 'ok',
+      risk: { score: 18, level: 'LOW', recommendation: '...' },
+      keepsake: {
+        id: 'rsg_xyz',
+        title: 'For M — a tender gift',
+        palette: ['#F4E9D8', '#A47551'],
+        riskBadge: { score: 18, level: 'LOW' },
+        txHash: '0x...',
+        explorerUrl: 'https://www.oklink.com/xlayer/tx/0x...',
+      },
     },
   },
   {
@@ -765,7 +880,7 @@ app.post('/api/quick_moment', (req, res) => {
 
 // ── Paid services: shared x402 v2 payment gate ──────────────────────────────
 function paidHandler(service) {
-  return (req, res) => {
+  return async (req, res) => {
     const payment = parsePaymentHeader(req, service);
     if (!payment.ok) {
       return res.status(402)
@@ -779,6 +894,133 @@ function paidHandler(service) {
     const recipient = body.recipient || payment.payload.from;
     const mintedAt = new Date().toISOString();
     const txHash = generateMockTxHash(payment.payload.txHash + recipient + service.id);
+
+    // verify_address (A2A: SentriAgent assess_wallet / assess_token) ─────
+    if (service.id === 'verify_address') {
+      const { chain, address, target = 'wallet' } = body;
+      if (!chain || !['ethereum','bsc','polygon','arbitrum','base','xlayer','solana'].includes(chain)) {
+        return res.status(400).json({ error: 'invalid_input', message: '`chain` must be one of: ethereum, bsc, polygon, arbitrum, base, xlayer, solana.' });
+      }
+      if (!address || typeof address !== 'string' || address.length < 20 || address.length > 66) {
+        return res.status(400).json({ error: 'invalid_input', message: '`address` must be 20-66 chars (0x... for EVM, base58 for Solana).' });
+      }
+      const tool = target === 'token' ? 'assess_token' : 'assess_wallet';
+      const t0 = Date.now();
+      let sentriResult;
+      let sentriError = null;
+      try {
+        sentriResult = await sentriCall(tool, { chain, address });
+      } catch (e) {
+        sentriError = e.message;
+        sentriResult = { score: null, level: 'UNKNOWN', proceed: false, recommendation: 'SentriAgent unavailable: ' + sentriError, signals: {} };
+      }
+      const verdict = {
+        id: 'va_' + crypto.randomBytes(4).toString('hex'),
+        target,
+        chain,
+        address,
+        score: sentriResult.score,
+        level: sentriResult.level,
+        proceed: sentriResult.proceed,
+        recommendation: sentriResult.recommendation,
+        signals: sentriResult.signals || {},
+        upstream: {
+          agent: 'SentriAgent',
+          agentId: 5103,
+          endpoint: SENTRI_ENDPOINT,
+          tool,
+          paymentMade: Boolean(SENTRI_PAYMENT_HEADER),
+          error: sentriError,
+        },
+        latencyMs: Date.now() - t0,
+        timestamp: new Date().toISOString(),
+      };
+      return res.json({ status: 'ok', verdict });
+    }
+
+    // risk_scored_gift (A2A: SentriAgent assess_wallet on recipient) ────
+    if (service.id === 'risk_scored_gift') {
+      const { moment, recipient, toName, note, mood = 'tender', riskTolerance = 'balanced' } = body;
+      if (!moment || moment.length < 8) {
+        return res.status(400).json({ error: 'invalid_input', message: '`moment` required, min 8 chars.' });
+      }
+      if (!recipient || !/^0x[a-fA-F0-9]{40}$/.test(recipient)) {
+        return res.status(400).json({ error: 'invalid_input', message: '`recipient` must be a valid X Layer address (0x...).' });
+      }
+      // Step 1: risk-score the recipient via SentriAgent
+      const t0 = Date.now();
+      let sentriResult;
+      let sentriError = null;
+      try {
+        sentriResult = await sentriCall('assess_wallet', { chain: 'xlayer', address: recipient });
+      } catch (e) {
+        sentriError = e.message;
+        sentriResult = { score: null, level: 'UNKNOWN', proceed: false, recommendation: 'SentriAgent unavailable', signals: {} };
+      }
+      const riskScore = sentriResult.score ?? 50;
+      const riskLevel = sentriResult.level || 'UNKNOWN';
+      // Risk threshold by tolerance
+      const threshold = { strict: 30, balanced: 60, permissive: 85 }[riskTolerance] ?? 60;
+      const refuse = riskScore > threshold;
+      if (refuse) {
+        return res.status(403).json({
+          error: 'recipient_too_risky',
+          message: `Recipient risk score ${riskScore} (${riskLevel}) exceeds your risk tolerance "${riskTolerance}" (max ${threshold}). Adjust riskTolerance to "permissive" to proceed anyway.`,
+          risk: {
+            score: riskScore,
+            level: riskLevel,
+            recommendation: sentriResult.recommendation,
+            signals: sentriResult.signals || {},
+          },
+          recipient,
+          upstream: {
+            agent: 'SentriAgent',
+            agentId: 5103,
+            endpoint: SENTRI_ENDPOINT,
+            tool: 'assess_wallet',
+            paymentMade: Boolean(SENTRI_PAYMENT_HEADER),
+            error: sentriError,
+          },
+          latencyMs: Date.now() - t0,
+        });
+      }
+      // Step 2: mint the gift (same as gift_keepsake)
+      const seed = crypto.randomBytes(8).toString('hex');
+      const core = generateKeepsakeCore({ moment, mood }, seed);
+      const giftTxHash = txHash;
+      const keepsake = {
+        ...core,
+        recipient,
+        toName: toName || null,
+        note: note || null,
+        riskBadge: { score: riskScore, level: riskLevel, source: 'SentriAgent' },
+        txHash: giftTxHash,
+        explorerUrl: `${X_LAYER_EXPLORER}/tx/${giftTxHash}`,
+        mintedAt,
+        paidAmount: service.priceUSDT,
+        paidAsset: PAYMENT_ASSET,
+        gift: true,
+      };
+      persistKeepsake(keepsake);
+      recordMint(keepsake, service.id);
+      return res.json({
+        status: 'ok',
+        risk: {
+          score: riskScore,
+          level: riskLevel,
+          recommendation: sentriResult.recommendation,
+          signals: sentriResult.signals || {},
+        },
+        keepsake,
+        upstream: {
+          agent: 'SentriAgent',
+          agentId: 5103,
+          endpoint: SENTRI_ENDPOINT,
+          tool: 'assess_wallet',
+          paymentMade: Boolean(SENTRI_PAYMENT_HEADER),
+        },
+      });
+    }
 
     // mint_keepsake (and its micro-priced trial) ─────────────────────────
     if (service.id === 'mint_keepsake' || service.id === 'mint_keepsake_trial') {
@@ -944,7 +1186,7 @@ function paidHandler(service) {
 }
 
 // Wire each paid service
-['mint_keepsake_trial', 'mint_keepsake', 'gift_keepsake', 'anniversary_mint', 'monthly_timeline', 'premium_story'].forEach((id) => {
+['mint_keepsake_trial', 'verify_address', 'mint_keepsake', 'risk_scored_gift', 'gift_keepsake', 'anniversary_mint', 'monthly_timeline', 'premium_story'].forEach((id) => {
   app.post(`/api/${id}`, paidHandler(SERVICE_BY_ID[id]));
 });
 

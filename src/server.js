@@ -962,7 +962,9 @@ app.get('/status', (_req, res) => {
       persistence: DATA_DIR_EPHEMERAL ? 'ephemeral (wipes on deploy — Render free tier)' : 'session-persistent (writes to disk; Render free tier wipes on every redeploy)',
       recentFile: RECENT_FILE,
       keepsakesFile: KEEPSAKES_FILE,
-      note: DATA_DIR_EPHEMERAL ? 'In-session persistence only. Real mints during a session stack on top of the seed.' : 'Disk-backed persistence is active.',
+      note: DATA_DIR_EPHEMERAL
+  ? 'Free tier /tmp is ephemeral. Real mints within a session stack on top of the seed, but are wiped on every redeploy.'
+  : 'Writes to /opt/render/project/src/data within the session. On Render free tier this is still wiped on redeploy (the whole container is recreated). True cross-deploy persistence requires a paid tier + persistent disk.',
     },
   });
 });

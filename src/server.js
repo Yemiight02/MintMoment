@@ -648,9 +648,13 @@ function generateMockTxHash(seed) {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = pathJoin(__filename, '..');
 // Try multiple candidate data dirs, in order of persistence preference.
-// On Render free tier Docker, /tmp is ephemeral — data is wiped on every deploy.
-// On paid Render, /var/data is a persistent disk mount.
-// We use whichever path we can write to.
+// On Render free tier Docker, BOTH /tmp AND /opt/render/project/src are wiped
+// on every redeploy (the whole container filesystem is recreated from the image).
+// On paid Render (Starter $7+/mo) with a persistent disk attached, the disk
+// mount path (default /var/data) would survive. On free tier, we accept
+// session-only persistence: writes work during a single boot but are wiped
+// when the service redeploys. The rich 12-mint seed re-runs on every boot
+// to maintain consistent social proof.
 function findWritableDataDir() {
   const candidates = [
     process.env.MINT_DATA_DIR,                                  // user override
@@ -955,7 +959,7 @@ app.get('/status', (_req, res) => {
     recentChecks: CHECK_HISTORY.slice(-20),
     storage: {
       dataDir: DATA_DIR,
-      persistence: DATA_DIR_EPHEMERAL ? 'ephemeral (wipes on deploy — Render free tier)' : 'persistent (survives deploys)',
+      persistence: DATA_DIR_EPHEMERAL ? 'ephemeral (wipes on deploy — Render free tier)' : 'session-persistent (writes to disk; Render free tier wipes on every redeploy)',
       recentFile: RECENT_FILE,
       keepsakesFile: KEEPSAKES_FILE,
       note: DATA_DIR_EPHEMERAL ? 'In-session persistence only. Real mints during a session stack on top of the seed.' : 'Disk-backed persistence is active.',

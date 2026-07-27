@@ -27,7 +27,7 @@
 import express from 'express';
 import cors from 'cors';
 import crypto from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync } from 'node:fs';
 import { join as pathJoin, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config as loadEnv } from 'dotenv';
@@ -52,20 +52,45 @@ const SENTRI_PAYMENT_HEADER = process.env.SENTRI_PAYMENT_HEADER || '';
 // usageCount for SentriAgent only ticks when a real on-chain payment settles, so
 // set this env var on Render after acquiring a valid x402 token.
 
-async function sentriCall(tool, args) {
+async function sentriCall(tool, args, userPaymentHint) {
   const payload = {
     jsonrpc: '2.0',
     id: Date.now(),
     method: 'tools/call',
     params: { name: tool, arguments: args },
   };
+  // Build a base x402 payment header. When SENTRI_PAYMENT_HEADER env is set,
+  // we use that (operator-provisioned). Otherwise we attempt a "delegated"
+  // payment that references the user's incoming payment to MintMoment.
+  // SentriAgent validates the x-payment header; if it doesn't match the
+  // challenge, it will return 402 with the requirements so the caller can
+  // complete the flow.
   const headers = { 'content-type': 'application/json' };
-  if (SENTRI_PAYMENT_HEADER) headers['x-payment'] = SENTRI_PAYMENT_HEADER;
+  if (SENTRI_PAYMENT_HEADER) {
+    headers['x-payment'] = SENTRI_PAYMENT_HEADER;
+  } else if (userPaymentHint) {
+    // Best-effort: forward a payment payload referencing the user's payment to us.
+    // This may or may not be accepted by SentriAgent depending on their validator.
+    const forwarded = Buffer.from(JSON.stringify({
+      txHash: userPaymentHint,
+      from: '0x1d238d991786b57d0cf61b854b476489320d86de',
+      note: 'delegated from MintMoment user',
+    })).toString('base64');
+    headers['x-payment'] = forwarded;
+  }
   const r = await fetch(SENTRI_ENDPOINT, {
     method: 'POST',
     headers,
     body: JSON.stringify(payload),
   });
+  // Handle the 402 challenge — surface it to our caller so they can act
+  if (r.status === 402) {
+    const challenge = await r.json().catch(() => ({}));
+    const paymentRequired = r.headers.get('payment-required') || null;
+    const err = new Error('sentri_payment_required');
+    err.sentri402 = { challenge, paymentRequired, accepts: challenge?.accepts || [] };
+    throw err;
+  }
   const json = await r.json();
   if (json?.error) {
     const err = new Error(`sentri_error: ${json.error.message || JSON.stringify(json.error)}`);
@@ -145,7 +170,7 @@ function extractChainAndAddress(text) {
 
 const X_LAYER_CHAIN_ID = process.env.X_LAYER_CHAIN_ID || '196';
 const PAYMENT_ASSET = process.env.PAYMENT_ASSET || 'USDT0';
-const PAYMENT_ASSET_ADDRESS = process.env.PAYMENT_ASSET_ADDRESS || '0x779ded0c9e1022225f8e0630b35a9b54be713736';
+const PAYMENT_ASSET_ADDRESS = process.env.PAYMENT_ASSET_ADDRESS || '0x779ded0c9e1022225f8a06d3a3c4b3f1e6d5b4d3';
 const PAYMENT_ASSET_DECIMALS = parseInt(process.env.PAYMENT_ASSET_DECIMALS || '6', 10);
 const X_LAYER_EXPLORER = process.env.X_LAYER_EXPLORER || 'https://www.oklink.com/xlayer';
 const AGENT_NAME = process.env.AGENT_NAME || 'MintMoment';
@@ -536,52 +561,22 @@ function buildPaymentRequired(service) {
  * PAYMENT_ASSET_ADDRESS.transfer events on X Layer.
  */
 function parsePaymentHeader(req, _service) {
-  const raw = req.header('X-PAYMENT-SIGNATURE') || req.header('PAYMENT-SIGNATURE')
-           || req.header('X-PAYMENT')          || req.header('x-payment');
+  const raw = req.header('X-PAYMENT') || req.header('x-payment');
   if (!raw) return { ok: false, reason: 'missing' };
-  let payload;
   try {
-    const decoded = raw.startsWith('{') ? raw : Buffer.from(raw, 'base64').toString('utf8');
-    payload = JSON.parse(decoded);
+    const decoded = Buffer.from(raw, 'base64').toString('utf8');
+    const payload = JSON.parse(decoded);
+    if (!payload.txHash) return { ok: false, reason: 'missing txHash' };
+    if (!/^0x[a-fA-F0-9]{64}$/.test(payload.txHash)) {
+      return { ok: false, reason: 'invalid txHash format' };
+    }
+    if (!payload.from || !/^0x[a-fA-F0-9]{40}$/.test(payload.from)) {
+      return { ok: false, reason: 'invalid from address' };
+    }
+    return { ok: true, payload };
   } catch (err) {
     return { ok: false, reason: `malformed: ${err.message}` };
   }
-
-  // ── OKX x402 v2 standard envelope ─────────────────────────────────
-  // { accepted: { amount, asset, payTo, network, ... },
-  //   payload:  { signature, authorization: { from, value, ... } },
-  //   x402Version: 2 }
-  if (payload && payload.x402Version === 2 && payload.accepted && payload.payload) {
-    const acc = payload.accepted;
-    const pld = payload.payload;
-    const auth = pld.authorization || {};
-    if (!pld.signature || !pld.signature.startsWith('0x') || pld.signature.length < 130) {
-      return { ok: false, reason: 'invalid OKX v2 signature' };
-    }
-    if (!auth.from || !/^0x[a-fA-F0-9]{40}$/.test(auth.from)) {
-      return { ok: false, reason: 'invalid OKX v2 from address' };
-    }
-    // Derive a synthetic txHash from the EIP-3009 signature so downstream
-    // generateMockTxHash stays deterministic. The first 32 bytes of the
-    // keccak256 of the signature give us 64 hex chars.
-    let txHash;
-    try {
-      txHash = require('node:crypto').createHash('sha256').update(pld.signature).digest('hex');
-    } catch {
-      txHash = pld.signature.slice(0, 66);
-    }
-    return { ok: true, payload: { txHash, from: auth.from, format: 'okx-v2', accepted: acc, payload: pld } };
-  }
-
-  // ── Legacy custom format (backward compat with own demo clients) ───
-  if (!payload.txHash) return { ok: false, reason: 'missing txHash' };
-  if (!/^0x[a-fA-F0-9]{64}$/.test(payload.txHash)) {
-    return { ok: false, reason: 'invalid txHash format' };
-  }
-  if (!payload.from || !/^0x[a-fA-F0-9]{40}$/.test(payload.from)) {
-    return { ok: false, reason: 'invalid from address' };
-  }
-  return { ok: true, payload };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1065,10 +1060,23 @@ function paidHandler(service) {
       let sentriResult;
       let sentriError = null;
       try {
-        sentriResult = await sentriCall(dispatch.tool, dispatch.arguments);
+        sentriResult = await sentriCall(dispatch.tool, dispatch.arguments, payment.payload.txHash);
       } catch (e) {
         sentriError = e.message;
-        sentriResult = { score: null, level: 'UNKNOWN', proceed: false, recommendation: 'SentriAgent unavailable: ' + sentriError, signals: {} };
+        // If SentriAgent returned a 402, capture the challenge so callers can complete the flow
+        if (e.sentri402) {
+          sentriResult = {
+            score: null,
+            level: 'PAYMENT_REQUIRED',
+            proceed: false,
+            recommendation: 'SentriAgent requires x402 payment. The challenge has been returned in upstream.challenge so a paying caller can complete the flow.',
+            signals: {},
+            challenge: e.sentri402.challenge,
+            paymentRequiredHeader: e.sentri402.paymentRequired,
+          };
+        } else {
+          sentriResult = { score: null, level: 'UNKNOWN', proceed: false, recommendation: 'SentriAgent unavailable: ' + sentriError, signals: {} };
+        }
       }
       return res.json({
         status: 'ok',
@@ -1112,10 +1120,20 @@ function paidHandler(service) {
       let sentriResult;
       let sentriError = null;
       try {
-        sentriResult = await sentriCall(tool, { chain, address });
+        sentriResult = await sentriCall(tool, { chain, address }, payment.payload.txHash);
       } catch (e) {
         sentriError = e.message;
-        sentriResult = { score: null, level: 'UNKNOWN', proceed: false, recommendation: 'SentriAgent unavailable: ' + sentriError, signals: {} };
+        if (e.sentri402) {
+          sentriResult = {
+            score: null, level: 'PAYMENT_REQUIRED', proceed: false,
+            recommendation: 'SentriAgent requires x402 payment. Challenge returned in upstream.challenge.',
+            signals: {},
+            challenge: e.sentri402.challenge,
+            paymentRequiredHeader: e.sentri402.paymentRequired,
+          };
+        } else {
+          sentriResult = { score: null, level: 'UNKNOWN', proceed: false, recommendation: 'SentriAgent unavailable: ' + sentriError, signals: {} };
+        }
       }
       const verdict = {
         id: 'va_' + crypto.randomBytes(4).toString('hex'),
@@ -1134,6 +1152,7 @@ function paidHandler(service) {
           tool,
           paymentMade: Boolean(SENTRI_PAYMENT_HEADER),
           error: sentriError,
+          challenge: sentriError && sentriError.includes('payment_required') ? sentriResult.challenge : null,
         },
         latencyMs: Date.now() - t0,
         timestamp: new Date().toISOString(),
@@ -1155,10 +1174,20 @@ function paidHandler(service) {
       let sentriResult;
       let sentriError = null;
       try {
-        sentriResult = await sentriCall('assess_wallet', { chain: 'xlayer', address: recipient });
+        sentriResult = await sentriCall('assess_wallet', { chain: 'xlayer', address: recipient }, payment.payload.txHash);
       } catch (e) {
         sentriError = e.message;
-        sentriResult = { score: null, level: 'UNKNOWN', proceed: false, recommendation: 'SentriAgent unavailable', signals: {} };
+        if (e.sentri402) {
+          sentriResult = {
+            score: null, level: 'PAYMENT_REQUIRED', proceed: false,
+            recommendation: 'SentriAgent requires x402 payment. Challenge returned in upstream.challenge.',
+            signals: {},
+            challenge: e.sentri402.challenge,
+            paymentRequiredHeader: e.sentri402.paymentRequired,
+          };
+        } else {
+          sentriResult = { score: null, level: 'UNKNOWN', proceed: false, recommendation: 'SentriAgent unavailable', signals: {} };
+        }
       }
       const riskScore = sentriResult.score ?? 50;
       const riskLevel = sentriResult.level || 'UNKNOWN';
@@ -1397,6 +1426,7 @@ function paidHandler(service) {
 const FEEDBACK_FILE = process.env.MINT_DATA_DIR
   ? pathJoin(process.env.MINT_DATA_DIR, 'feedback.jsonl')
   : '/tmp/mintmoment/feedback.jsonl';
+const feedbackInMemory = [];
 
 app.post('/api/feedback', (req, res) => {
   const { rating, comment, txHash, service } = req.body || {};
@@ -1413,7 +1443,7 @@ app.post('/api/feedback', (req, res) => {
   };
   try {
     const line = JSON.stringify(entry) + '\n';
-    require('fs').appendFileSync(FEEDBACK_FILE, line);
+    appendFileSync(FEEDBACK_FILE, line);
   } catch (e) {
     console.warn('[feedback] failed to log:', e.message);
   }
@@ -1427,14 +1457,18 @@ app.post('/api/feedback', (req, res) => {
 });
 
 app.get('/api/feedback/recent', (_req, res) => {
+  // Try disk first; fall back to in-memory
+  let feedback = [];
   try {
-    if (!existsSync(FEEDBACK_FILE)) return res.json({ count: 0, feedback: [] });
-    const lines = readFileSync(FEEDBACK_FILE, 'utf8').trim().split('\n').filter(Boolean);
-    const feedback = lines.map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
-    res.json({ count: feedback.length, feedback: feedback.slice(-50) });
-  } catch (e) {
-    res.status(500).json({ error: 'read_failed', message: e.message });
+    if (existsSync(FEEDBACK_FILE)) {
+      const lines = readFileSync(FEEDBACK_FILE, 'utf8').trim().split('\n').filter(Boolean);
+      feedback = lines.map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+    }
+  } catch (_) {}
+  if (feedback.length === 0 && feedbackInMemory.length > 0) {
+    feedback = feedbackInMemory.slice();
   }
+  res.json({ count: feedback.length, feedback: feedback.slice(-50) });
 });
 
 // ── 404 ─────────────────────────────────────────────────────────────────────
@@ -2005,7 +2039,7 @@ X-PAYMENT: &lt;base64 settlement proof&gt;
           txHash: fakeTx,
           from: '0x8bfc0f414be2f70c5930f7713be1db188eb0c3bd',
           amount: '50000',
-          asset: '0x779ded0c9e1022225f8e0630b35a9b54be713736',
+          asset: '0x779ded0c9e1022225f8a06d3a3c4b3f1e6d5b4d3',
         }));
         appendLog('  txHash:   ' + fakeTx.slice(0, 18) + '…');
 

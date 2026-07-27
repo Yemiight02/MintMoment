@@ -647,9 +647,35 @@ function generateMockTxHash(seed) {
 // ─────────────────────────────────────────────────────────────────────────────
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = pathJoin(__filename, '..');
-const DATA_DIR = process.env.MINT_DATA_DIR || '/tmp/mintmoment';
+// Try multiple candidate data dirs, in order of persistence preference.
+// On Render free tier Docker, /tmp is ephemeral — data is wiped on every deploy.
+// On paid Render, /var/data is a persistent disk mount.
+// We use whichever path we can write to.
+function findWritableDataDir() {
+  const candidates = [
+    process.env.MINT_DATA_DIR,                                  // user override
+    '/opt/render/project/src/data',                             // paid persistent disk default
+    '/var/data',                                                // generic Linux persistent
+    pathJoin(process.cwd(), 'data'),                            // project-local (works in dev)
+    '/tmp/mintmoment',                                          // ephemeral fallback
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    try {
+      mkdirSync(candidate, { recursive: true });
+      // Test write
+      const testFile = pathJoin(candidate, '.write-test');
+      writeFileSync(testFile, 'ok');
+      return { dir: candidate, ephemeral: candidate.startsWith('/tmp') };
+    } catch (_) { /* try next */ }
+  }
+  // Last resort: in-memory only
+  return { dir: null, ephemeral: true };
+}
+const _dataDirInfo = findWritableDataDir();
+const DATA_DIR = _dataDirInfo.dir || '/tmp/mintmoment';
 const RECENT_FILE = pathJoin(DATA_DIR, 'recent.json');
 const KEEPSAKES_FILE = pathJoin(DATA_DIR, 'keepsakes.json');
+const DATA_DIR_EPHEMERAL = _dataDirInfo.ephemeral;
 const RECENT_CAP = 50;
 
 try { mkdirSync(DATA_DIR, { recursive: true }); } catch (_) {}
@@ -722,39 +748,72 @@ function recordMint(keepsake, serviceId) {
   saveRecent();
 }
 
-// Seed a few demo mints on first boot only (if disk is empty).
-// After first run, recent mints come from /tmp/mintmoment/recent.json — so
-// restarts don't wipe the social proof.
+// Seed a rich, diverse set of demo mints on first boot only (if disk is empty).
+// This is the social proof that ships with every fresh deployment — it shows
+// variety across all 9 services, with realistic moments, tx hashes, and timestamps.
+//
+// Why not persistent disk: Render's persistent disk feature requires a paid
+// plan (Starter $7+/mo). On the free plan, /tmp is ephemeral. So we treat
+// the seed as a one-time set of canonical demo data that lives in code and
+// is the "permanent" social proof of record.
+//
+// Real mints added during a session stack on top, and we use a one-shot
+// MINT_SEED_RAN flag in /tmp to skip re-seeding if a session survived a
+// hot-reload.
+let _seedRan = false;
 function seedDemoMints() {
-  if (recentMints.length > 0) {
-    console.log(`[seed] skipping seed: ${recentMints.length} mints already in persistent store`);
+  // Use a marker file in /tmp to detect if this is a hot-reload (same PID-less node)
+  const seedMarker = pathJoin(DATA_DIR, '.seed-ran');
+  if (existsSync(seedMarker) || recentMints.length > 0) {
+    console.log(`[seed] skipping seed: ${recentMints.length} mints already in store, marker=${existsSync(seedMarker)}`);
     return;
   }
 
+  // Build a believable "day in the life" — 12 mints across all 9 services
+  // with timestamps spread across the last 18 hours, so the recent feed
+  // always looks active.
+  const now = Date.now();
+  const hour = 3600_000;
   const samples = [
-    { moment: 'First coffee with M, the morning everything changed.', mood: 'tender', recipient: RECEIVE_ADDRESS },
-    { moment: 'A long walk home in the rain after the news.',            mood: 'nostalgic', recipient: RECEIVE_ADDRESS },
-    { moment: 'Got the offer. Hands shaking, smiling at the screen.',     mood: 'bold', recipient: RECEIVE_ADDRESS },
-    { moment: 'Sunday morning, the dog on my feet, no plans at all.',     mood: 'calm', recipient: RECEIVE_ADDRESS },
-    { moment: 'The kids built a fort out of every blanket in the house.', mood: 'joyful', recipient: RECEIVE_ADDRESS },
+    { service: 'mint_keepsake',     moment: 'First coffee with M, the morning everything changed.',          mood: 'tender',    paid: '0.05', ago: 1 * hour  },
+    { service: 'mint_keepsake',     moment: 'Got the offer. Hands shaking, smiling at the screen.',         mood: 'bold',      paid: '0.05', ago: 2 * hour  },
+    { service: 'mint_keepsake',     moment: 'A long walk home in the rain after the news.',                  mood: 'nostalgic', paid: '0.05', ago: 3 * hour  },
+    { service: 'mint_keepsake',     moment: 'Sunday morning, the dog on my feet, no plans at all.',         mood: 'calm',      paid: '0.05', ago: 4 * hour  },
+    { service: 'mint_keepsake',     moment: 'The kids built a fort out of every blanket in the house.',      mood: 'joyful',    paid: '0.05', ago: 5 * hour  },
+    { service: 'gift_keepsake',     moment: 'For M, on the morning we met. I keep this one for us.',        mood: 'tender',    paid: '0.10', ago: 6 * hour, recipient: '0x8bfc0f414be2f70c5930f7713be1db188eb0c3bd', toName: 'M' },
+    { service: 'anniversary_mint',  moment: 'Three years in, the kitchen still smells like morning.',       mood: 'nostalgic', paid: '0.15', ago: 7 * hour, anniversaryDate: '2023-07-27' },
+    { service: 'premium_story',     moment: 'A long weekend in Lisbon, the kind you do not want to leave.', mood: 'nostalgic', paid: '0.50', ago: 8 * hour },
+    { service: 'monthly_timeline',  moment: 'July: a hackathon, an approval, a first sold mint.',           mood: 'bold',      paid: '0.20', ago: 10 * hour },
+    { service: 'mint_keepsake_trial', moment: 'A real mint, one-tenth of a cent. The impulse-buy tier.',     mood: 'bold',      paid: '0.001', ago: 12 * hour },
+    { service: 'verify_address',    moment: 'Risk-scored a fresh wallet before committing funds.',           mood: 'bold',      paid: '0.05', ago: 14 * hour },
+    { service: 'risk_scored_gift',  moment: 'Gift to M, risk-scored. Recipient scored 65, balanced tolerance.', mood: 'tender', paid: '0.15', ago: 16 * hour, recipient: '0x8bfc0f414be2f70c5930f7713be1db188eb0c3bd', toName: 'M', riskScore: 65, riskLevel: 'MEDIUM' },
   ];
+
   samples.forEach((s, i) => {
     const seed = crypto.randomBytes(8).toString('hex');
-    const core = generateKeepsakeCore(s, seed);
-    const txHash = '0x' + crypto.createHash('sha256').update(seed + 'demo-' + i).digest('hex');
+    const core = generateKeepsakeCore({ moment: s.moment, mood: s.mood }, seed);
+    const txHash = '0x' + crypto.createHash('sha256').update(seed + s.service + 'demo-' + i).digest('hex');
     const keepsake = {
       ...core,
       preview: false,
       txHash,
       explorerUrl: `${X_LAYER_EXPLORER}/tx/${txHash}`,
-      mintedAt: new Date(Date.now() - (i + 1) * 3600_000).toISOString(),
-      recipient: s.recipient,
-      paidAmount: '0.05',
+      mintedAt: new Date(now - s.ago).toISOString(),
+      recipient: s.recipient || RECEIVE_ADDRESS,
+      toName: s.toName || null,
+      paidAmount: s.paid,
       paidAsset: PAYMENT_ASSET,
+      service: s.service,
+      ...(s.anniversaryDate ? { anniversaryDate: s.anniversaryDate, yearsSince: 3 } : {}),
+      ...(s.riskScore ? { riskBadge: { score: s.riskScore, level: s.riskLevel, source: 'SentriAgent' } } : {}),
     };
     persistKeepsake(keepsake);
-    recordMint(keepsake, 'mint_keepsake');
+    recordMint(keepsake, s.service);
   });
+
+  // Write the marker so hot-reloads in the same boot don't re-seed
+  try { writeFileSync(seedMarker, new Date().toISOString()); } catch (_) {}
+  console.log(`[seed] planted ${samples.length} demo mints across ${new Set(samples.map((s) => s.service)).size} services`);
 }
 
 seedDemoMints();
@@ -894,6 +953,13 @@ app.get('/status', (_req, res) => {
       rss: Math.round(process.memoryUsage().rss / 1024 / 1024),
     },
     recentChecks: CHECK_HISTORY.slice(-20),
+    storage: {
+      dataDir: DATA_DIR,
+      persistence: DATA_DIR_EPHEMERAL ? 'ephemeral (wipes on deploy — Render free tier)' : 'persistent (survives deploys)',
+      recentFile: RECENT_FILE,
+      keepsakesFile: KEEPSAKES_FILE,
+      note: DATA_DIR_EPHEMERAL ? 'In-session persistence only. Real mints during a session stack on top of the seed.' : 'Disk-backed persistence is active.',
+    },
   });
 });
 
